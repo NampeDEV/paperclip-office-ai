@@ -14,6 +14,7 @@ const EXPECTED_BUNDLED_KEYS = [
 
 const EXPECTED_OPTIONAL_KEYS = [
   "paperclipai/optional/content/content-machine",
+  "paperclipai/optional/office/planner-executor-reviewer",
 ];
 
 const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,6 +32,28 @@ describe("shipped teams catalog", () => {
 
     expect(bundledKeys).toEqual(EXPECTED_BUNDLED_KEYS);
     expect(optionalKeys).toEqual(EXPECTED_OPTIONAL_KEYS);
+  });
+
+  it("keeps the AI Office workflow preset explicit and idle on install", () => {
+    const officeWorkflow = catalogTeams.find(
+      (team) => team.key === "paperclipai/optional/office/planner-executor-reviewer",
+    );
+
+    expect(officeWorkflow).toMatchObject({
+      kind: "optional",
+      rootAgentSlugs: ["planner"],
+      agentSlugs: ["executor", "planner", "reviewer"],
+      projectSlugs: ["office-workflow"],
+      counts: {
+        agents: 3,
+        projects: 1,
+        tasks: 0,
+        routines: 0,
+      },
+      envInputs: [],
+      sourceRefs: [],
+      trustLevel: "markdown_only",
+    });
   });
 
   it("keeps every shipped team free of executable scripts and external sources in Phase B", () => {

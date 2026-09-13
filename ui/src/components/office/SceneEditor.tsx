@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { OFFICE_SCENE_MAX_SEATS, type Agent } from "@paperclipai/shared";
+import {
+  OFFICE_SCENE_MAX_CHARACTERS,
+  OFFICE_SCENE_MAX_SEATS,
+  type Agent,
+} from "@paperclipai/shared";
 import { ApiError } from "@/api/client";
-import { officeApi, type OfficeScene, type OfficeSeat, type SaveOfficeScene } from "@/api/office";
+import {
+  officeApi,
+  type OfficeCharacter,
+  type OfficeScene,
+  type OfficeSeat,
+  type SaveOfficeScene,
+} from "@/api/office";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,34 +28,42 @@ import {
   BUNDLED_OFFICE_IMAGE,
   OFFICE_MAX_BACKGROUND_BYTES,
   OFFICE_SCENE_NAME,
+  clampOfficeCharacter,
   clampOfficeSeat,
   hasDuplicateSeatBinding,
   isAgentAvailableForSeat,
+  officeCharacterStyle,
   officeSeatStyle,
   createDefaultOfficeSeats,
   updateOfficeSeat,
+  updateOfficeCharacter,
 } from "@/lib/office";
 
 interface SceneDraft {
+  projectId: string | null;
   revision: number;
   name: string;
   backgroundAssetId: string | null;
   imageWidth: number;
   imageHeight: number;
   seats: OfficeSeat[];
+  characters: OfficeCharacter[];
 }
 
 interface DragState {
-  seatId: string;
+  layer: "seat" | "character";
+  layerId: string;
   mode: "move" | "resize";
   pointerId: number;
   startX: number;
   startY: number;
-  initial: OfficeSeat;
+  initial: Pick<OfficeSeat, "x" | "y" | "width" | "height">;
 }
 
 interface SceneEditorProps {
   companyId: string;
+  /** Requested scope, which can be a project even when the API returned its fallback. */
+  projectId: string | null;
   scene: OfficeScene | null;
   agents: Agent[];
   open: boolean;
@@ -54,24 +72,30 @@ interface SceneEditorProps {
   onReload: () => Promise<OfficeScene | null>;
 }
 
-function createDraft(scene: OfficeScene | null): SceneDraft {
+function createDraft(scene: OfficeScene | null, projectId: string | null): SceneDraft {
   if (scene) {
     return {
-      revision: scene.revision,
+      // A fallback scene stays read-only for a project request. Saving starts a
+      // new project override instead of mutating the company layout.
+      projectId,
+      revision: scene.projectId === projectId ? scene.revision : 0,
       name: scene.name,
       backgroundAssetId: scene.backgroundAssetId,
       imageWidth: scene.imageWidth,
       imageHeight: scene.imageHeight,
       seats: scene.seats.map((seat) => ({ ...seat })),
+      characters: scene.characters.map((character) => ({ ...character })),
     };
   }
   return {
+    projectId,
     revision: 0,
     name: OFFICE_SCENE_NAME,
     backgroundAssetId: null,
     imageWidth: BUNDLED_OFFICE_IMAGE.width,
     imageHeight: BUNDLED_OFFICE_IMAGE.height,
     seats: createDefaultOfficeSeats(),
+    characters: [],
   };
 }
 
@@ -87,6 +111,7 @@ function roundedSeatValue(value: number): string {
 
 export function SceneEditor({
   companyId,
+  projectId,
   scene,
   agents,
   open,
@@ -94,7 +119,7 @@ export function SceneEditor({
   onSaved,
   onReload,
 }: SceneEditorProps) {
-  const [draft, setDraft] = useState<SceneDraft>(() => createDraft(scene));
+  const [draft, setDraft] = useState<SceneDraft>(() => createDraft(scene, projectId));
   const [preview, setPreview] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -104,13 +129,13 @@ export function SceneEditor({
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
-      setDraft(createDraft(scene));
+      setDraft(createDraft(scene, projectId));
       setPreview(false);
       setSaveError(null);
       setDrag(null);
     }
     wasOpenRef.current = open;
-  }, [open, scene]);
+  }, [open, projectId, scene]);
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => officeApi.uploadBackground(companyId, file),
@@ -126,6 +151,40 @@ export function SceneEditor({
     },
     onError: (error) => {
       setSaveError(error instanceof Error ? error.message : "Could not upload the scene image.");
+    },
+  });
+
+  const characterUploadMutation = useMutation({
+    mutationFn: (file: File) => officeApi.uploadCharacter(companyId, file),
+    onSuccess: (uploaded) => {
+      setDraft((current) => {
+        if (current.characters.length >= OFFICE_SCENE_MAX_CHARACTERS) return current;
+        const highestZIndex = Math.max(
+          0,
+          ...current.seats.map((seat) => seat.zIndex),
+          ...current.characters.map((character) => character.zIndex),
+        );
+        return {
+          ...current,
+          characters: [
+            ...current.characters,
+            {
+              id: crypto.randomUUID(),
+              assetId: uploaded.assetId,
+              x: 0.4,
+              y: 0.4,
+              width: 0.2,
+              height: 0.2,
+              zIndex: Math.min(1_000, highestZIndex + 1),
+            },
+          ],
+        };
+      });
+      setPreview(false);
+      setSaveError(null);
+    },
+    onError: (error) => {
+      setSaveError(error instanceof Error ? error.message : "Could not upload the character art.");
     },
   });
 
@@ -151,6 +210,22 @@ export function SceneEditor({
     setDraft((current) => ({
       ...current,
       seats: current.seats.map((seat) => seat.id === seatId ? updateOfficeSeat(seat, changes) : seat),
+    }));
+  }
+
+  function updateDraftCharacter(characterId: string, changes: Partial<OfficeCharacter>) {
+    setDraft((current) => ({
+      ...current,
+      characters: current.characters.map((character) => (
+        character.id === characterId ? updateOfficeCharacter(character, changes) : character
+      )),
+    }));
+  }
+
+  function removeCharacter(characterId: string) {
+    setDraft((current) => ({
+      ...current,
+      characters: current.characters.filter((character) => character.id !== characterId),
     }));
   }
 
@@ -195,18 +270,44 @@ export function SceneEditor({
     uploadMutation.mutate(file);
   }
 
-  function startDrag(event: PointerEvent<HTMLElement>, seat: OfficeSeat, mode: DragState["mode"]) {
+  function handleCharacterUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (draft.characters.length >= OFFICE_SCENE_MAX_CHARACTERS) {
+      setSaveError(`A scene can have at most ${OFFICE_SCENE_MAX_CHARACTERS} character layers.`);
+      return;
+    }
+    if (file.size > OFFICE_MAX_BACKGROUND_BYTES) {
+      setSaveError("Choose character art smaller than 5 MiB.");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setSaveError("Choose a raster image file.");
+      return;
+    }
+    setSaveError(null);
+    characterUploadMutation.mutate(file);
+  }
+
+  function startDrag(
+    event: PointerEvent<HTMLElement>,
+    layer: DragState["layer"],
+    value: OfficeSeat | OfficeCharacter,
+    mode: DragState["mode"],
+  ) {
     if (preview || event.button !== 0) return;
     const stage = stageRef.current;
     if (!stage) return;
     stage.setPointerCapture(event.pointerId);
     setDrag({
-      seatId: seat.id,
+      layer,
+      layerId: value.id,
       mode,
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      initial: seat,
+      initial: value,
     });
   }
 
@@ -219,13 +320,17 @@ export function SceneEditor({
     const deltaX = (event.clientX - drag.startX) / rect.width;
     const deltaY = (event.clientY - drag.startY) / rect.height;
     if (drag.mode === "move") {
-      updateDraftSeat(drag.seatId, { x: drag.initial.x + deltaX, y: drag.initial.y + deltaY });
+      const changes = { x: drag.initial.x + deltaX, y: drag.initial.y + deltaY };
+      if (drag.layer === "seat") updateDraftSeat(drag.layerId, changes);
+      else updateDraftCharacter(drag.layerId, changes);
       return;
     }
-    updateDraftSeat(drag.seatId, {
+    const changes = {
       width: drag.initial.width + deltaX,
       height: drag.initial.height + deltaY,
-    });
+    };
+    if (drag.layer === "seat") updateDraftSeat(drag.layerId, changes);
+    else updateDraftCharacter(drag.layerId, changes);
   }
 
   function endDrag(event: PointerEvent<HTMLDivElement>) {
@@ -239,7 +344,7 @@ export function SceneEditor({
   async function reloadDraft() {
     try {
       const reloaded = await onReload();
-      setDraft(createDraft(reloaded));
+      setDraft(createDraft(reloaded, projectId));
       setSaveError(null);
       setPreview(false);
     } catch (error) {
@@ -248,8 +353,9 @@ export function SceneEditor({
   }
 
   function saveDraft() {
-    if (saveLockRef.current || uploadMutation.isPending || saveMutation.isPending) return;
+    if (saveLockRef.current || uploadMutation.isPending || characterUploadMutation.isPending || saveMutation.isPending) return;
     const seats = draft.seats.map(clampOfficeSeat);
+    const characters = draft.characters.map(clampOfficeCharacter);
     if (hasDuplicateSeatBinding(seats)) {
       setSaveError("An agent can only be assigned to one seat.");
       return;
@@ -257,17 +363,19 @@ export function SceneEditor({
     setSaveError(null);
     saveLockRef.current = true;
     saveMutation.mutate({
+      projectId: draft.projectId,
       revision: draft.revision,
       name: draft.name.trim() || OFFICE_SCENE_NAME,
       backgroundAssetId: draft.backgroundAssetId,
       imageWidth: draft.imageWidth,
       imageHeight: draft.imageHeight,
       seats,
+      characters,
     });
   }
 
   const stageStyle = { aspectRatio: `${draft.imageWidth} / ${draft.imageHeight}` } as CSSProperties;
-  const pending = uploadMutation.isPending || saveMutation.isPending;
+  const pending = uploadMutation.isPending || characterUploadMutation.isPending || saveMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next && !pending ? onOpenChange(false) : null)}>
@@ -305,6 +413,20 @@ export function SceneEditor({
                   {draft.backgroundAssetId ? "Uploaded image preview" : "Bundled office art"} · {draft.imageWidth} × {draft.imageHeight}
                 </p>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="office-scene-character">Character art</Label>
+                <Input
+                  id="office-scene-character"
+                  className="min-h-(--sz-44px)"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={handleCharacterUpload}
+                  disabled={pending || draft.characters.length >= OFFICE_SCENE_MAX_CHARACTERS}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Adds decorative art only. It never changes agent, task, or run state.
+                </p>
+              </div>
             </div>
 
             <div
@@ -317,12 +439,36 @@ export function SceneEditor({
               onPointerCancel={endDrag}
             >
               <img src={draftImageSource(draft.backgroundAssetId)} alt="Scene layout preview" className="absolute inset-0 h-full w-full object-contain" />
+              {draft.characters.map((character, index) => (
+                <div
+                  key={character.id}
+                  className="office-editor-character"
+                  style={officeCharacterStyle(character)}
+                  role="img"
+                  aria-label={`Character art ${index + 1}`}
+                  onPointerDown={(event) => startDrag(event, "character", character, "move")}
+                >
+                  <img src={draftImageSource(character.assetId)} alt="" draggable={false} />
+                  {!preview ? (
+                    <button
+                      type="button"
+                      data-office-resize
+                      aria-label={`Resize character art ${index + 1}`}
+                      className="office-editor-resize"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        startDrag(event, "character", character, "resize");
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ))}
               {draft.seats.map((seat) => (
                 <div
                   key={seat.id}
                   className="office-editor-seat"
                   style={officeSeatStyle(seat)}
-                  onPointerDown={(event) => startDrag(event, seat, "move")}
+                  onPointerDown={(event) => startDrag(event, "seat", seat, "move")}
                 >
                   <span className="truncate">{seat.label}</span>
                   <span className="office-editor-seat-agent truncate">
@@ -336,7 +482,7 @@ export function SceneEditor({
                       className="office-editor-resize"
                       onPointerDown={(event) => {
                         event.stopPropagation();
-                        startDrag(event, seat, "resize");
+                        startDrag(event, "seat", seat, "resize");
                       }}
                     />
                   ) : null}
@@ -410,6 +556,41 @@ export function SceneEditor({
                   </div>
                 </fieldset>
               ))}
+
+              {draft.characters.length > 0 ? (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold">Character layers</h3>
+                  {draft.characters.map((character, index) => (
+                    <fieldset key={character.id} className="rounded-lg border border-border p-3">
+                      <legend className="px-1 text-sm font-medium">Character {index + 1}</legend>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {(["x", "y", "width", "height", "zIndex"] as const).map((field) => (
+                          <label key={field} className="space-y-1 text-sm">
+                            <span>{field}</span>
+                            <Input
+                              className="min-h-(--sz-44px)"
+                              type="number"
+                              min="0"
+                              max={field === "zIndex" ? "1000" : "1"}
+                              step={field === "zIndex" ? "1" : "0.01"}
+                              value={field === "zIndex" ? String(character[field]) : roundedSeatValue(character[field])}
+                              onChange={(event) => {
+                                const value = event.currentTarget.valueAsNumber;
+                                if (Number.isFinite(value)) updateDraftCharacter(character.id, { [field]: value });
+                              }}
+                            />
+                          </label>
+                        ))}
+                        <div className="flex items-end">
+                          <Button type="button" variant="outline" className="min-h-(--sz-44px)" onClick={() => removeCharacter(character.id)}>
+                            Remove character
+                          </Button>
+                        </div>
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -430,7 +611,7 @@ export function SceneEditor({
             Cancel
           </Button>
           <Button type="button" className="min-h-(--sz-44px)" onClick={saveDraft} disabled={pending}>
-            {saveMutation.isPending ? "Saving…" : uploadMutation.isPending ? "Uploading…" : "Save layout"}
+            {saveMutation.isPending ? "Saving…" : uploadMutation.isPending || characterUploadMutation.isPending ? "Uploading…" : "Save layout"}
           </Button>
         </DialogFooter>
       </DialogContent>

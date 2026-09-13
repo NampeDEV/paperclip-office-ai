@@ -5,6 +5,7 @@ export const BUNDLED_OFFICE_SCENE_IMAGE_HEIGHT = 941;
 export const OFFICE_SCENE_MAX_IMAGE_DIMENSION = 16_384;
 export const OFFICE_SCENE_MAX_IMAGE_PIXELS = 50_000_000;
 export const OFFICE_SCENE_MAX_SEATS = 100;
+export const OFFICE_SCENE_MAX_CHARACTERS = 100;
 
 const normalizedCoordinateSchema = z.number().finite().min(0).max(1);
 
@@ -63,16 +64,63 @@ export const officeSeatsSchema = z
     }
   });
 
+export const officeCharacterSchema = z
+  .object({
+    id: z.string().guid(),
+    assetId: z.string().guid(),
+    x: normalizedCoordinateSchema,
+    y: normalizedCoordinateSchema,
+    width: z.number().finite().positive().max(1),
+    height: z.number().finite().positive().max(1),
+    zIndex: z.number().int().min(0).max(1_000),
+  })
+  .strict()
+  .superRefine((character, ctx) => {
+    if (character.x + character.width > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["width"],
+        message: "Character must remain inside the normalized image bounds",
+      });
+    }
+    if (character.y + character.height > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["height"],
+        message: "Character must remain inside the normalized image bounds",
+      });
+    }
+  });
+
+export const officeCharactersSchema = z
+  .array(officeCharacterSchema)
+  .max(OFFICE_SCENE_MAX_CHARACTERS)
+  .superRefine((characters, ctx) => {
+    const ids = new Set<string>();
+    for (const [index, character] of characters.entries()) {
+      if (ids.has(character.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, "id"],
+          message: "Character ids must be unique within a scene",
+        });
+      }
+      ids.add(character.id);
+    }
+  });
+
 const imageDimensionSchema = z.number().int().positive().max(OFFICE_SCENE_MAX_IMAGE_DIMENSION);
 
 export const saveOfficeSceneSchema = z
   .object({
+    projectId: z.string().guid().nullable(),
     revision: z.number().int().min(0),
     name: z.string().trim().min(1).max(200),
     backgroundAssetId: z.string().guid().nullable(),
     imageWidth: imageDimensionSchema,
     imageHeight: imageDimensionSchema,
     seats: officeSeatsSchema,
+    characters: officeCharactersSchema,
   })
   .strict()
   .superRefine((scene, ctx) => {
@@ -95,6 +143,10 @@ export const saveOfficeSceneSchema = z
     }
   });
 
+export const officeSceneScopeQuerySchema = z.object({
+  projectId: z.string().guid().optional(),
+});
+
 export const officeSceneBackgroundUploadResponseSchema = z
   .object({
     assetId: z.string().guid(),
@@ -104,5 +156,6 @@ export const officeSceneBackgroundUploadResponseSchema = z
   .strict();
 
 export type OfficeSeat = z.infer<typeof officeSeatSchema>;
+export type OfficeCharacter = z.infer<typeof officeCharacterSchema>;
 export type SaveOfficeScene = z.infer<typeof saveOfficeSceneSchema>;
 export type OfficeSceneBackgroundUploadResponse = z.infer<typeof officeSceneBackgroundUploadResponseSchema>;

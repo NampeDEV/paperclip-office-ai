@@ -328,6 +328,7 @@ export type {
 export type { AssetImage } from "./asset.js";
 export type {
   OfficeSeat,
+  OfficeCharacter,
   OfficeScene,
   SaveOfficeScene,
   OfficeSceneBackgroundUploadResponse,

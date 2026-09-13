@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-09-13T12:40:23.527Z",
+  "companyId": "282cca6a-fc3d-4129-951c-ef5fb9d7e563",
+  "checks": [
+    "preview: three agents, one project, no tasks or routines",
+    "same key returns identical receipt",
+    "changed input returns 409",
+    "exactly three agents and one project after replay",
+    "no tasks or live runs"
+  ]
+}

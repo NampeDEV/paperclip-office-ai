@@ -1,0 +1,16 @@
+{
+  "verifiedAt": "2026-09-13T12:23:43.886Z",
+  "companyId": "480c920e-2560-4004-8a81-af9fe850bd5a",
+  "projectId": "c130a391-7ed8-43a1-a9b5-c7a404a6773b",
+  "issueId": "4a2adb51-519d-4f3d-b3f2-f6401cae7ea2",
+  "attachmentId": "2add23dc-1219-46b8-b76b-007de3022813",
+  "workProductId": "f8253037-de42-4a18-a252-8b5df5a55907",
+  "byteSize": 5847,
+  "sha256": "92411751010d91548a3ff98f5d2b5a1b0b4c2719c3081e0b6ac78e4e18efb842",
+  "sourceTasks": 2,
+  "priorArtifactCount": 1,
+  "routineRunId": "c80574c9-1466-4bcd-b184-356f4839c1c1",
+  "providerRunId": "357d3d8a-8c7c-4b61-b8eb-873452f9f378",
+  "providerRunDisposition": "cancelled: issue_reassigned after artifact creation and board handoff",
+  "historicalStatusNote": "The report snapshots in_progress before its own board handoff; current task status is in_review."
+}

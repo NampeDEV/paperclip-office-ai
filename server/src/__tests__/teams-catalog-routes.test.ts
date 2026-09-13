@@ -275,7 +275,7 @@ describe("teams catalog routes", () => {
       .post(`/api/companies/${companyId}/teams/catalog/product-engineering/install`)
       .send({
         collisionStrategy: "rename",
-        secretValues: { "agent:cto:OPENAI_API_KEY": "sk-test" },
+        idempotencyKey: "install-product-engineering",
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -284,7 +284,7 @@ describe("teams catalog routes", () => {
       "product-engineering",
       expect.objectContaining({
         collisionStrategy: "rename",
-        secretValues: { "agent:cto:OPENAI_API_KEY": "sk-test" },
+        idempotencyKey: "install-product-engineering",
         actor: expect.objectContaining({
           actorType: "agent",
           actorId: "agent-1",

@@ -42,6 +42,7 @@ describe("teams catalog manifest", () => {
         "  - engineering",
       ],
       files: {
+        ".paperclip.yaml": "schema: paperclip/v1\n",
         "agents/cto/AGENTS.md": [
           "---",
           "name: CTO",
@@ -91,7 +92,7 @@ describe("teams catalog manifest", () => {
       slug: "product-engineering",
       name: "Product Engineering",
       schema: "agentcompanies/v1",
-      trustLevel: "markdown_only",
+      trustLevel: "assets",
       compatibility: "compatible",
       recommendedForCompanyTypes: ["software"],
       tags: ["engineering"],
@@ -119,6 +120,7 @@ describe("teams catalog manifest", () => {
     ]);
     expect(result.manifest.teams[0]!.files.map((file) => file.path)).toEqual([
       "TEAM.md",
+      ".paperclip.yaml",
       "agents/cto/AGENTS.md",
       "projects/app/PROJECT.md",
       "projects/app/tasks/review/TASK.md",

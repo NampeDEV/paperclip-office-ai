@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageName": "@paperclipai/teams-catalog",
   "packageVersion": "0.1.0",
-  "generatedAt": "2026-06-04T18:03:41.262Z",
+  "generatedAt": "2026-09-13T12:42:27.541Z",
   "teams": [
     {
       "id": "paperclipai:bundled:company-defaults:core-exec-team",
@@ -462,6 +462,129 @@
       "trustLevel": "markdown_only",
       "compatibility": "compatible",
       "contentHash": "sha256:06822cec5f2b6910cb37ba0ebd5e04ed5c7e34f77225564ddddc2470779cdaa6"
+    },
+    {
+      "id": "paperclipai:optional:office:planner-executor-reviewer",
+      "key": "paperclipai/optional/office/planner-executor-reviewer",
+      "kind": "optional",
+      "category": "office",
+      "slug": "planner-executor-reviewer",
+      "name": "AI Office Workflow",
+      "description": "Optional Planner, Executor, and Reviewer pod for an explicit, review-gated delivery workflow with no scheduled work.",
+      "path": "catalog/optional/office/planner-executor-reviewer",
+      "entrypoint": "TEAM.md",
+      "schema": "agentcompanies/v1",
+      "defaultInstall": false,
+      "recommendedForCompanyTypes": [
+        "software",
+        "startup",
+        "generalist"
+      ],
+      "tags": [
+        "office",
+        "planning",
+        "execution",
+        "review"
+      ],
+      "counts": {
+        "agents": 3,
+        "projects": 1,
+        "tasks": 0,
+        "routines": 0,
+        "localSkills": 0,
+        "catalogSkills": 4,
+        "externalSkillSources": 0
+      },
+      "rootAgentSlugs": [
+        "planner"
+      ],
+      "agentSlugs": [
+        "executor",
+        "planner",
+        "reviewer"
+      ],
+      "projectSlugs": [
+        "office-workflow"
+      ],
+      "requiredSkills": [
+        {
+          "type": "catalog",
+          "ref": "doc-maintenance",
+          "agentSlugs": [
+            "executor"
+          ],
+          "resolved": true,
+          "catalogSkillId": "paperclipai:bundled:docs:doc-maintenance",
+          "catalogSkillKey": "paperclipai/bundled/docs/doc-maintenance"
+        },
+        {
+          "type": "catalog",
+          "ref": "issue-triage",
+          "agentSlugs": [
+            "planner"
+          ],
+          "resolved": true,
+          "catalogSkillId": "paperclipai:bundled:paperclip-operations:issue-triage",
+          "catalogSkillKey": "paperclipai/bundled/paperclip-operations/issue-triage"
+        },
+        {
+          "type": "catalog",
+          "ref": "qa-acceptance",
+          "agentSlugs": [
+            "reviewer"
+          ],
+          "resolved": true,
+          "catalogSkillId": "paperclipai:bundled:quality:qa-acceptance",
+          "catalogSkillKey": "paperclipai/bundled/quality/qa-acceptance"
+        },
+        {
+          "type": "catalog",
+          "ref": "task-planning",
+          "agentSlugs": [
+            "planner"
+          ],
+          "resolved": true,
+          "catalogSkillId": "paperclipai:bundled:paperclip-operations:task-planning",
+          "catalogSkillKey": "paperclipai/bundled/paperclip-operations/task-planning"
+        }
+      ],
+      "envInputs": [],
+      "sourceRefs": [],
+      "files": [
+        {
+          "path": "TEAM.md",
+          "kind": "team",
+          "sizeBytes": 2515,
+          "sha256": "0458200020adbe6cff7c7333ee8ebaf10c200fe939a3d1a84c4704c6830b940e"
+        },
+        {
+          "path": "agents/executor/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 2165,
+          "sha256": "251228b6120b2a69d555bde4e1921a2757399b9054ad54464294a1faa921b56b"
+        },
+        {
+          "path": "agents/planner/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1926,
+          "sha256": "35c0e946b7f2e68f7ad620f9b7ec18499d9918c34b3ff7f4f21c1da9aa6ece3f"
+        },
+        {
+          "path": "agents/reviewer/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1712,
+          "sha256": "f78ce642a6cb0af4cbb25d58e72d786f770eef190f569e332797decbf7b3aa9f"
+        },
+        {
+          "path": "projects/office-workflow/PROJECT.md",
+          "kind": "project",
+          "sizeBytes": 704,
+          "sha256": "dd1c7e4b5ecda5b29627e1c0398d8f6bfcb82f7e6394a987e02fba3a1238609f"
+        }
+      ],
+      "trustLevel": "markdown_only",
+      "compatibility": "compatible",
+      "contentHash": "sha256:54e506749e03bbb98b7d2c70000d702e56c793953856e24de5c8c8c8b2d76a5a"
     }
   ]
 }

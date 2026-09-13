@@ -31,6 +31,7 @@ function scene(name: string, revision: number): OfficeScene {
   return {
     id: "scene-1",
     companyId: "company-1",
+    projectId: null,
     name,
     backgroundAssetId: null,
     imageWidth: 1672,
@@ -38,6 +39,7 @@ function scene(name: string, revision: number): OfficeScene {
     isActive: true,
     revision,
     seats: createDefaultOfficeSeats(),
+    characters: [],
     createdAt: new Date("2026-09-13T12:00:00.000Z"),
     updatedAt: new Date("2026-09-13T12:00:00.000Z"),
   };
@@ -66,6 +68,7 @@ describe("SceneEditor", () => {
         root.render(
           <SceneEditor
             companyId="company-1"
+            projectId={null}
             scene={nextScene}
             agents={[]}
             open
@@ -95,6 +98,7 @@ describe("SceneEditor", () => {
       root.render(
         <SceneEditor
           companyId="company-1"
+          projectId={null}
           scene={scene("Saved scene", 1)}
           agents={[]}
           open
@@ -115,6 +119,32 @@ describe("SceneEditor", () => {
     expect(mutationState.mutate).toHaveBeenCalledTimes(1);
   });
 
+  it("creates a project override from a company fallback instead of updating the fallback", () => {
+    act(() => {
+      root.render(
+        <SceneEditor
+          companyId="company-1"
+          projectId="11111111-1111-4111-8111-111111111111"
+          scene={scene("Company layout", 3)}
+          agents={[]}
+          open
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          onReload={async () => null}
+        />,
+      );
+    });
+    const saveButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "Save layout") as HTMLButtonElement;
+    act(() => saveButton.click());
+
+    expect(mutationState.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "11111111-1111-4111-8111-111111111111",
+      revision: 0,
+      characters: [],
+    }));
+  });
+
   it("adds a new editable seat with a browser UUID", () => {
     const uuid = "11111111-1111-4111-8111-111111111111";
     const randomUuid = vi.spyOn(crypto, "randomUUID").mockReturnValue(uuid);
@@ -122,6 +152,7 @@ describe("SceneEditor", () => {
       root.render(
         <SceneEditor
           companyId="company-1"
+          projectId={null}
           scene={scene("Saved scene", 1)}
           agents={[]}
           open

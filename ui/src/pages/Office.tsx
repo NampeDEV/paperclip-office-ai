@@ -13,6 +13,7 @@ import { IssueStatusBadge } from "@/components/StatusBadge";
 import { AgentCard } from "@/components/office/AgentCard";
 import { OfficeInspector } from "@/components/office/OfficeInspector";
 import { OfficeScene } from "@/components/office/OfficeScene";
+import { OfficeWorkload } from "@/components/office/OfficeWorkload";
 import { SceneEditor } from "@/components/office/SceneEditor";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
@@ -89,7 +90,7 @@ export function Office() {
   const invalidateOfficeSnapshots = useCallback(() => {
     if (!selectedCompanyId) return;
     void Promise.all([
-      queryClient.invalidateQueries({ queryKey: officeQueryKeys.scene(selectedCompanyId) }),
+      queryClient.invalidateQueries({ queryKey: officeQueryKeys.scenes(selectedCompanyId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) }),
       ...(selectedAgentId
         ? [
@@ -101,6 +102,7 @@ export function Office() {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.liveRuns(selectedCompanyId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(selectedCompanyId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.attention(selectedCompanyId) }),
     ]);
   }, [queryClient, selectedAgentId, selectedCompanyId]);
 
@@ -163,8 +165,8 @@ export function Office() {
     enabled: !!selectedCompanyId,
   });
   const sceneQuery = useQuery({
-    queryKey: officeQueryKeys.scene(selectedCompanyId!),
-    queryFn: () => officeApi.getScene(selectedCompanyId!),
+    queryKey: officeQueryKeys.scene(selectedCompanyId!, selectedProjectId),
+    queryFn: () => officeApi.getScene(selectedCompanyId!, selectedProjectId),
     enabled: !!selectedCompanyId,
   });
 
@@ -227,6 +229,7 @@ export function Office() {
   const filteredTasks = filterOfficeTasks(issues, activeProjectId);
   const activeTasks = activeOfficeTasks(filteredTasks).sort((left, right) => taskUpdatedAt(right) - taskUpdatedAt(left));
   const scene = sceneQuery.data ?? null;
+  const sceneUsesCompanyFallback = activeProjectId !== null && scene?.projectId === null;
   const seats = scene?.seats ?? createDefaultOfficeSeats();
   const seatedAgentIds = new Set(seats.flatMap((seat) => seat.agentId ? [seat.agentId] : []));
   const unseatedCards = cards.filter((card) => !seatedAgentIds.has(card.agent.id));
@@ -320,6 +323,7 @@ export function Office() {
             imageWidth={scene?.imageWidth ?? BUNDLED_OFFICE_IMAGE.width}
             imageHeight={scene?.imageHeight ?? BUNDLED_OFFICE_IMAGE.height}
             seats={seats}
+            characters={scene?.characters ?? []}
             cards={cards}
             selectedAgentId={selectedAgentId}
             mobileVisible={mobileSceneOverviewOpen}
@@ -330,7 +334,9 @@ export function Office() {
           ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">
-              {scene ? `Saved layout · revision ${scene.revision}` : "Default layout is not saved yet."}
+              {sceneUsesCompanyFallback
+                ? "Using the company layout. Editing creates a project layout."
+                : scene ? `Saved ${scene.projectId ? "project" : "company"} layout · revision ${scene.revision}` : "Default layout is not saved yet."}
             </p>
             <div className="flex flex-wrap gap-2">
               {isMobileOfficeLayout ? (
@@ -343,6 +349,14 @@ export function Office() {
               </Button>
             </div>
           </div>
+
+          <OfficeWorkload
+            companyId={selectedCompanyId}
+            projectId={activeProjectId}
+            agents={agents}
+            tasks={issues}
+            runs={liveRunsQuery.data ?? []}
+          />
 
           <section className="office-mobile-agent-list" aria-labelledby="office-mobile-agents-heading">
             <div className="flex items-center justify-between gap-2">
@@ -453,11 +467,12 @@ export function Office() {
 
       <SceneEditor
         companyId={selectedCompanyId}
+        projectId={activeProjectId}
         scene={scene}
         agents={agents}
         open={editorOpen}
         onOpenChange={setEditorOpen}
-        onSaved={(saved) => queryClient.setQueryData(officeQueryKeys.scene(selectedCompanyId), saved)}
+        onSaved={(saved) => queryClient.setQueryData(officeQueryKeys.scene(selectedCompanyId, saved.projectId), saved)}
         onReload={async () => {
           const result = await sceneQuery.refetch();
           return result.data ?? null;

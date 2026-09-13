@@ -147,7 +147,28 @@ export const catalogTeamPreviewSchema = z.object({
 export const catalogTeamInstallSchema = catalogTeamPreviewSchema.extend({
   adapterOverrides: z.record(z.string().min(1), portabilityAdapterOverrideSchema).optional(),
   secretValues: z.record(z.string().min(1), z.string()).optional(),
-}).strict();
+  // Optional so existing catalog installers keep their current behavior. When
+  // supplied, the server binds it to one company/catalog/options request and
+  // replays the durable success receipt on an identical retry.
+  idempotencyKey: z.string().trim().min(1).max(200).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!value.idempotencyKey) return;
+  if (Object.keys(value.secretValues ?? {}).length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["secretValues"],
+      message: "Idempotent catalog installs do not accept secretValues. Configure secrets after the install completes.",
+    });
+  }
+  for (const [slug, override] of Object.entries(value.adapterOverrides ?? {})) {
+    if (override.adapterConfig === undefined) continue;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["adapterOverrides", slug, "adapterConfig"],
+      message: "Idempotent catalog installs only support adapterType overrides. Configure adapter settings after the install completes.",
+    });
+  }
+});
 
 export const catalogTeamSkillPreparationSchema = z.object({
   type: catalogTeamSkillRequirementTypeSchema,

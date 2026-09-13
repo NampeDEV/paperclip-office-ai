@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import type { Agent, HeartbeatRun, Issue, Project } from "@paperclipai/shared";
 import type { LiveRunForIssue } from "../api/heartbeats";
-import type { OfficeSeat } from "../api/office";
+import type { OfficeCharacter, OfficeSeat } from "../api/office";
 
 export const BUNDLED_OFFICE_IMAGE = {
   src: "/office/office-night.webp",
@@ -256,6 +256,26 @@ export function updateOfficeSeat(seat: OfficeSeat, changes: Partial<OfficeSeat>)
   return clampOfficeSeat({ ...seat, ...changes });
 }
 
+export function clampOfficeCharacter(character: OfficeCharacter): OfficeCharacter {
+  const width = Math.min(1, Math.max(0.05, character.width));
+  const height = Math.min(1, Math.max(0.05, character.height));
+  return {
+    ...character,
+    x: Math.min(1 - width, Math.max(0, character.x)),
+    y: Math.min(1 - height, Math.max(0, character.y)),
+    width,
+    height,
+    zIndex: Math.min(1_000, Math.max(0, Math.round(character.zIndex))),
+  };
+}
+
+export function updateOfficeCharacter(
+  character: OfficeCharacter,
+  changes: Partial<OfficeCharacter>,
+): OfficeCharacter {
+  return clampOfficeCharacter({ ...character, ...changes });
+}
+
 export function hasDuplicateSeatBinding(seats: OfficeSeat[]): boolean {
   const boundAgents = seats.flatMap((seat) => seat.agentId ? [seat.agentId] : []);
   return new Set(boundAgents).size !== boundAgents.length;
@@ -272,6 +292,16 @@ export function officeSeatStyle(seat: OfficeSeat): CSSProperties {
     "--office-seat-width": String(seat.width),
     "--office-seat-height": String(seat.height),
     "--office-seat-z": String(seat.zIndex),
+  } as CSSProperties;
+}
+
+export function officeCharacterStyle(character: OfficeCharacter): CSSProperties {
+  return {
+    "--office-character-x": String(character.x),
+    "--office-character-y": String(character.y),
+    "--office-character-width": String(character.width),
+    "--office-character-height": String(character.height),
+    "--office-character-z": String(character.zIndex),
   } as CSSProperties;
 }
 

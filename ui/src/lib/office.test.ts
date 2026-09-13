@@ -4,6 +4,7 @@ import type { LiveRunForIssue } from "@/api/heartbeats";
 import {
   activeOfficeTasks,
   buildOfficeAgentCards,
+  clampOfficeCharacter,
   clampOfficeSeat,
   createDefaultOfficeSeats,
   filterOfficeTasks,
@@ -168,5 +169,18 @@ describe("Office task scope and seat geometry", () => {
       { ...seats[0]!, agentId },
       { ...seats[1]!, agentId },
     ])).toBe(true);
+  });
+
+  it("keeps decorative character geometry inside the scene without assigning work", () => {
+    const character = clampOfficeCharacter({
+      id: "00000000-0000-4000-8000-000000000001",
+      assetId: "00000000-0000-4000-8000-000000000002",
+      x: 0.95,
+      y: -0.1,
+      width: 0.4,
+      height: 0.4,
+      zIndex: 1.8,
+    });
+    expect(character).toMatchObject({ x: 0.6, y: 0, width: 0.4, height: 0.4, zIndex: 2 });
   });
 });

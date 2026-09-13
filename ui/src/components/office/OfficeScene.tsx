@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { OfficeSeat } from "@/api/office";
-import { BUNDLED_OFFICE_IMAGE, officeSeatStyle, type OfficeAgentCardView } from "@/lib/office";
+import type { OfficeCharacter, OfficeSeat } from "@/api/office";
+import {
+  BUNDLED_OFFICE_IMAGE,
+  officeCharacterStyle,
+  officeSeatStyle,
+  type OfficeAgentCardView,
+} from "@/lib/office";
 import { AgentCard } from "./AgentCard";
 
 interface OfficeSceneProps {
@@ -8,6 +13,7 @@ interface OfficeSceneProps {
   imageWidth: number;
   imageHeight: number;
   seats: OfficeSeat[];
+  characters: OfficeCharacter[];
   cards: OfficeAgentCardView[];
   selectedAgentId: string | null;
   mobileVisible?: boolean;
@@ -25,6 +31,7 @@ export function OfficeScene({
   imageWidth,
   imageHeight,
   seats,
+  characters,
   cards,
   selectedAgentId,
   mobileVisible = false,
@@ -57,6 +64,17 @@ export function OfficeScene({
           />
         ) : null}
         <div className="absolute inset-0" aria-live="polite">
+          {characters.map((character) => (
+            <img
+              key={character.id}
+              src={`/api/assets/${encodeURIComponent(character.assetId)}/content`}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              className="office-character"
+              style={officeCharacterStyle(character)}
+            />
+          ))}
           {seats.map((seat) => {
             const card = seat.agentId ? cardsByAgentId.get(seat.agentId) ?? null : null;
             return (

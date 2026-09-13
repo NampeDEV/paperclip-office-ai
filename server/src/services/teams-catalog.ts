@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Db } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
+import { catalogTeamInstallReceipts, type Db } from "@paperclipai/db";
 import type {
   CatalogManifest,
   CatalogTeam,
@@ -61,6 +63,7 @@ export interface CatalogTeamImportOptions {
   selectedFiles?: string[];
   adapterOverrides?: CompanyPortabilityImport["adapterOverrides"];
   secretValues?: CompanyPortabilityImport["secretValues"];
+  idempotencyKey?: string;
   sourcePolicy?: CatalogTeamSourcePolicy;
   actor?: CatalogTeamActorContext | null;
 }
@@ -260,6 +263,91 @@ export function readCatalogTeamProvenance(
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+type CatalogTeamInstallReceiptStatus = "running" | "succeeded" | "failed" | "ambiguous";
+
+function normalizedIdempotencyKey(options: CatalogTeamImportOptions) {
+  if (options.idempotencyKey === undefined) return null;
+  const key = options.idempotencyKey.trim();
+  if (!key || key.length > 200) {
+    throw unprocessable("Catalog team idempotencyKey must be between 1 and 200 characters.");
+  }
+  if (Object.keys(options.secretValues ?? {}).length > 0) {
+    throw unprocessable("Idempotent catalog installs do not accept secretValues. Configure secrets after the install completes.");
+  }
+  const configuredOverride = Object.entries(options.adapterOverrides ?? {})
+    .find(([, override]) => override.adapterConfig !== undefined);
+  if (configuredOverride) {
+    throw unprocessable("Idempotent catalog installs only support adapterType overrides. Configure adapter settings after the install completes.");
+  }
+  return key;
+}
+
+function stableJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") return Number.isFinite(value) ? JSON.stringify(value) : "null";
+  if (Array.isArray(value)) return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
+  if (isPlainRecord(value)) {
+    return `{${Object.keys(value)
+      .sort((left, right) => left.localeCompare(right))
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify("[unsupported]");
+}
+
+function catalogInstallFingerprint(team: CatalogTeam, options: CatalogTeamImportOptions, defaultAdapterType: string) {
+  const targetManager = options.targetManagerSlug?.trim()
+    ? { slug: options.targetManagerSlug.trim() }
+    : { id: options.targetManagerAgentId?.trim() || null };
+  const sourcePolicy = options.sourcePolicy ?? {};
+  const adapterOverrides = Object.fromEntries(
+    Object.entries(options.adapterOverrides ?? {})
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([slug, override]) => [
+        slug,
+        {
+          adapterType: override.adapterType,
+        },
+      ]),
+  );
+  const request = {
+    catalog: { id: team.id, contentHash: team.contentHash },
+    targetManager,
+    include: {
+      agents: options.include?.agents ?? true,
+      projects: options.include?.projects ?? true,
+      issues: options.include?.issues ?? true,
+      skills: options.include?.skills ?? true,
+    },
+    agents: options.agents === undefined || options.agents === "all"
+      ? "all"
+      : Array.from(new Set(options.agents)).sort((left, right) => left.localeCompare(right)),
+    collisionStrategy: options.collisionStrategy ?? "rename",
+    nameOverrides: options.nameOverrides ?? {},
+    selectedFiles: options.selectedFiles === undefined
+      ? null
+      : Array.from(new Set(options.selectedFiles)).sort((left, right) => left.localeCompare(right)),
+    sourcePolicy: {
+      allowExternalSources: sourcePolicy.allowExternalSources === true,
+      allowUnpinnedOptionalSources: sourcePolicy.allowUnpinnedOptionalSources === true,
+      allowLocalPathSources: sourcePolicy.allowLocalPathSources === true,
+    },
+    adapterOverrides,
+    defaultAdapterType,
+  };
+  return `sha256:${createHash("sha256").update(stableJson(request)).digest("hex")}`;
+}
+
+function receiptResult(value: unknown): CatalogTeamInstallResult | null {
+  if (!isPlainRecord(value) || !isPlainRecord(value.team) || !isPlainRecord(value.portabilityImport)) {
+    return null;
+  }
+  if (!Array.isArray(value.skillPreparations) || !Array.isArray(value.warnings)) return null;
+  return value as unknown as CatalogTeamInstallResult;
 }
 
 export async function resolveCatalogTeamReference(reference: string): Promise<{ team: CatalogTeam | null; ambiguous: boolean }> {
@@ -742,6 +830,78 @@ export function teamsCatalogService(db: Db) {
   const companySkills = companySkillService(db);
   const agents = agentService(db);
 
+  async function claimCatalogInstallReceipt(
+    companyId: string,
+    team: CatalogTeam,
+    idempotencyKey: string,
+    requestFingerprint: string,
+  ): Promise<{ kind: "claimed"; receiptId: string } | { kind: "replayed"; result: CatalogTeamInstallResult }> {
+    const [created] = await db
+      .insert(catalogTeamInstallReceipts)
+      .values({
+        companyId,
+        catalogId: team.id,
+        idempotencyKey,
+        requestFingerprint,
+        status: "running",
+      })
+      .onConflictDoNothing({
+        target: [
+          catalogTeamInstallReceipts.companyId,
+          catalogTeamInstallReceipts.catalogId,
+          catalogTeamInstallReceipts.idempotencyKey,
+        ],
+      })
+      .returning();
+    if (created) return { kind: "claimed", receiptId: created.id };
+
+    const existing = await db
+      .select()
+      .from(catalogTeamInstallReceipts)
+      .where(and(
+        eq(catalogTeamInstallReceipts.companyId, companyId),
+        eq(catalogTeamInstallReceipts.catalogId, team.id),
+        eq(catalogTeamInstallReceipts.idempotencyKey, idempotencyKey),
+      ))
+      .then((rows) => rows[0] ?? null);
+    if (!existing) {
+      throw conflict("Catalog team install receipt could not be read after a concurrent claim. Retry with the same idempotencyKey.");
+    }
+    if (existing.requestFingerprint !== requestFingerprint) {
+      throw conflict("This idempotencyKey is already bound to different catalog install options.");
+    }
+    if (existing.status === "succeeded") {
+      const result = receiptResult(existing.result);
+      if (result) return { kind: "replayed", result };
+      throw conflict("Catalog team install has an incomplete success receipt and will not be imported again automatically.");
+    }
+    if (existing.status === "running") {
+      throw conflict("Catalog team install with this idempotencyKey is still in progress. Retry with the same key after it finishes.");
+    }
+    throw conflict("Catalog team install did not complete cleanly and will not be imported again automatically. Inspect the prior import and use a new idempotencyKey if it is safe to continue.");
+  }
+
+  async function finishCatalogInstallReceipt(
+    receiptId: string,
+    status: Exclude<CatalogTeamInstallReceiptStatus, "running">,
+    result: CatalogTeamInstallResult | null,
+  ) {
+    const [updated] = await db
+      .update(catalogTeamInstallReceipts)
+      .set({
+        status,
+        result: result as unknown as Record<string, unknown> | null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(catalogTeamInstallReceipts.id, receiptId),
+        eq(catalogTeamInstallReceipts.status, "running"),
+      ))
+      .returning({ id: catalogTeamInstallReceipts.id });
+    return Boolean(updated);
+  }
+
   async function resolveTargetManagerReference(
     companyId: string,
     options: CatalogTeamImportOptions,
@@ -770,8 +930,9 @@ export function teamsCatalogService(db: Db) {
     companyId: string,
     catalogRef: string,
     options: CatalogTeamImportOptions = {},
+    resolvedTeam?: CatalogTeam,
   ): Promise<CatalogTeamPreparedSource> {
-    const team = await getCatalogTeamOrThrow(catalogRef);
+    const team = resolvedTeam ?? await getCatalogTeamOrThrow(catalogRef);
     const warnings: string[] = [];
     const errors: string[] = [];
 
@@ -904,62 +1065,95 @@ export function teamsCatalogService(db: Db) {
     catalogRef: string,
     options: CatalogTeamImportOptions = {},
   ): Promise<CatalogTeamInstallResult> {
-    const prepared = await prepareCatalogTeamSource(companyId, catalogRef, options);
-    if (prepared.errors.length > 0) {
-      throw unprocessable(`Catalog team source preparation failed: ${prepared.errors.join("; ")}`);
+    const defaultAdapterType = defaultSafeCatalogAdapterType();
+    const idempotencyKey = normalizedIdempotencyKey(options);
+    let receiptId: string | null = null;
+    let receiptClaimed = false;
+    let importStarted = false;
+    let resolvedTeam: CatalogTeam | undefined;
+
+    if (idempotencyKey) {
+      resolvedTeam = await getCatalogTeamOrThrow(catalogRef);
+      const claim = await claimCatalogInstallReceipt(
+        companyId,
+        resolvedTeam,
+        idempotencyKey,
+        catalogInstallFingerprint(resolvedTeam, options, defaultAdapterType),
+      );
+      if (claim.kind === "replayed") return claim.result;
+      receiptId = claim.receiptId;
+      receiptClaimed = true;
     }
 
-    const defaultAdapterType = defaultSafeCatalogAdapterType();
-    const importInput: CompanyPortabilityImport = {
-      ...buildPortabilityInput(companyId, prepared.source, options),
-      adapterOverrides: withSafeCatalogAdapterDefaults(
-        prepared.team.agentSlugs,
-        options.adapterOverrides,
-        defaultAdapterType,
-      ),
-      secretValues: options.secretValues,
-    };
-    const importPreview = await portability.previewImport(importInput, {
-      mode: "agent_safe",
-      sourceCompanyId: companyId,
-    });
-    if (importPreview.errors.length > 0) {
-      throw unprocessable(`Catalog team import preview has errors: ${importPreview.errors.join("; ")}`);
-    }
-    const defaultedAdapterSlugs = prepared.team.agentSlugs.filter(
-      (slug) => !options.adapterOverrides?.[slug],
-    );
-    const warnings = [
-      ...prepared.warnings,
-      ...importPreview.warnings,
-      ...(defaultedAdapterSlugs.length > 0
-        ? [
-            `Catalog agents without explicit overrides (${defaultedAdapterSlugs.join(", ")}) default to ${defaultAdapterType}. Pass adapterOverrides or PAPERCLIP_TEAMS_CATALOG_DEFAULT_ADAPTER_TYPE to use a different supported adapter.`,
-          ]
-        : []),
-    ];
-    const result = await portability.importBundle(
-      importInput,
-      options.actor?.userId ?? (options.actor?.actorType === "user" ? options.actor.actorId : null),
-      {
+    try {
+      const prepared = await prepareCatalogTeamSource(companyId, catalogRef, options, resolvedTeam);
+      if (prepared.errors.length > 0) {
+        throw unprocessable(`Catalog team source preparation failed: ${prepared.errors.join("; ")}`);
+      }
+
+      const importInput: CompanyPortabilityImport = {
+        ...buildPortabilityInput(companyId, prepared.source, options),
+        adapterOverrides: withSafeCatalogAdapterDefaults(
+          prepared.team.agentSlugs,
+          options.adapterOverrides,
+          defaultAdapterType,
+        ),
+        secretValues: options.secretValues,
+      };
+      const importPreview = await portability.previewImport(importInput, {
         mode: "agent_safe",
         sourceCompanyId: companyId,
-      },
-    );
-    warnings.push(...await prepareSkillInstalls(companyId, prepared));
-    result.warnings.push(...warnings);
-    await logCatalogEvent("company.team_catalog_installed", companyId, prepared.team, options.actor, {
-      warningCount: result.warnings.length,
-      agentCount: result.agents.length,
-      projectCount: result.projects.length,
-      skillPreparationCount: prepared.skillPreparations.length,
-    });
-    return {
-      team: prepared.team,
-      portabilityImport: result,
-      skillPreparations: prepared.skillPreparations,
-      warnings: result.warnings,
-    };
+      });
+      if (importPreview.errors.length > 0) {
+        throw unprocessable(`Catalog team import preview has errors: ${importPreview.errors.join("; ")}`);
+      }
+      const defaultedAdapterSlugs = prepared.team.agentSlugs.filter(
+        (slug) => !options.adapterOverrides?.[slug],
+      );
+      const warnings = [
+        ...prepared.warnings,
+        ...importPreview.warnings,
+        ...(defaultedAdapterSlugs.length > 0
+          ? [
+              `Catalog agents without explicit overrides (${defaultedAdapterSlugs.join(", ")}) default to ${defaultAdapterType}. Pass adapterOverrides or PAPERCLIP_TEAMS_CATALOG_DEFAULT_ADAPTER_TYPE to use a different supported adapter.`,
+            ]
+          : []),
+      ];
+      importStarted = true;
+      const portabilityImport = await portability.importBundle(
+        importInput,
+        options.actor?.userId ?? (options.actor?.actorType === "user" ? options.actor.actorId : null),
+        {
+          mode: "agent_safe",
+          sourceCompanyId: companyId,
+        },
+      );
+      warnings.push(...await prepareSkillInstalls(companyId, prepared));
+      portabilityImport.warnings.push(...warnings);
+      const installResult: CatalogTeamInstallResult = {
+        team: prepared.team,
+        portabilityImport,
+        skillPreparations: prepared.skillPreparations,
+        warnings: portabilityImport.warnings,
+      };
+      const response = installResult;
+      if (receiptId && !await finishCatalogInstallReceipt(receiptId, "succeeded", response)) {
+        throw conflict("Catalog team import completed but its durable receipt could not be finalized. It will not be imported again automatically.");
+      }
+      await logCatalogEvent("company.team_catalog_installed", companyId, prepared.team, options.actor, {
+        warningCount: response.warnings.length,
+        agentCount: response.portabilityImport.agents.length,
+        projectCount: response.portabilityImport.projects.length,
+        skillPreparationCount: prepared.skillPreparations.length,
+      });
+      return response;
+    } catch (error) {
+      if (receiptClaimed && receiptId) {
+        await finishCatalogInstallReceipt(receiptId, importStarted ? "ambiguous" : "failed", null)
+          .catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   /**
