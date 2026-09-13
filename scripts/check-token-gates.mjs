@@ -86,11 +86,12 @@ const CSS_PATH = resolve(UI_SRC, "index.css");
 // a plain hyphen-minus as the path/reason separator, and of the historical
 // per-batch prose blocks NOT being in this format (they are not parsed;
 // only lines starting with "* allow " are).
-function loadAllowlist(cssPath) {
-  const css = readFileSync(cssPath, "utf8");
+export function parseAllowlist(css) {
   const entries = [];
   const lineRe = /^\s*\*\s*allow\s+(\S+)\s+(?:—|-{1,2})\s*(.*)$/;
-  for (const rawLine of css.split("\n")) {
+  // Checkouts may use CRLF. Splitting only on `\n` leaves a trailing `\r`,
+  // which prevents the end-anchored allowlist expression from matching.
+  for (const rawLine of css.split(/\r\n?|\n/)) {
     const m = rawLine.match(lineRe);
     if (m) {
       entries.push({ path: m[1], reason: m[2].trim() });
@@ -99,20 +100,33 @@ function loadAllowlist(cssPath) {
   return entries;
 }
 
+function loadAllowlist(cssPath) {
+  return parseAllowlist(readFileSync(cssPath, "utf8"));
+}
+
 function isAllowlisted(relPath, allowlist) {
   return allowlist.some((entry) => relPath.includes(entry.path));
 }
 
 // ── File walking ─────────────────────────────────────────────────────────
+const SOURCE_FILE_RE = /\.(?:tsx?|jsx?)$/;
+const TEST_SOURCE_FILE_RE = /\.(?:test|spec)\.(?:tsx?|jsx?)$/;
+
+export function isProductionSourceFile(fileName) {
+  // Test fixtures carry realistic API/data literals. The gate protects rendered
+  // application source, so test-only files belong to the test suite, not here.
+  return SOURCE_FILE_RE.test(fileName) && !TEST_SOURCE_FILE_RE.test(fileName);
+}
+
 function walk(dir, out) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name);
     if (entry.isDirectory()) walk(p, out);
-    else if (/\.(tsx?|jsx?)$/.test(entry.name)) out.push(p);
+    else if (isProductionSourceFile(entry.name)) out.push(p);
   }
 }
 
-function listFiles() {
+export function listFiles() {
   const files = [];
   for (const dir of SCAN_DIRS) walk(resolve(UI_SRC, dir), files);
   files.sort();
@@ -338,4 +352,8 @@ function relPathToPosix(filePath) {
   return ("ui/src/" + relative(UI_SRC, filePath)).split("\\").join("/");
 }
 
-main();
+function isMainModule() {
+  return process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+}
+
+if (isMainModule()) main();

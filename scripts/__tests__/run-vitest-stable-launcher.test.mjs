@@ -9,23 +9,31 @@ import test from "node:test";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = path.join(repoRoot, "scripts", "run-vitest-stable.mjs");
 
-test("stable Vitest launcher runs through the pnpm CLI from npm_execpath", () => {
+test("stable Vitest launcher invokes Vitest directly without pnpm exec", () => {
   const tempRoot = mkdtempSync(path.join(os.tmpdir(), "paperclip-vitest-launcher-"));
   const pnpmCli = path.join(tempRoot, "pnpm-test.cjs");
+  const preload = path.join(tempRoot, "capture-vitest.cjs");
   const calls = path.join(tempRoot, "calls.jsonl");
   writeFileSync(
     pnpmCli,
+    'throw new Error("pnpm exec must not be invoked by the Vitest launcher");',
+  );
+  writeFileSync(
+    preload,
     `const { appendFileSync, writeFileSync } = require("node:fs");
-const args = process.argv.slice(2);
-appendFileSync(process.env.PNPM_LAUNCHER_CALLS, JSON.stringify(args) + "\\n");
-if (args[0] === "exec" && args[1] === "vitest" && args[2] === "list") {
-  const output = args.find((arg) => arg.startsWith("--json="));
-  writeFileSync(output.slice("--json=".length), JSON.stringify([{
-    projectName: "@paperclipai/server",
-    file: "server/src/__tests__/chat-channels.integration.test.ts",
-    name: "launcher regression case",
-    location: { line: 1, column: 1 },
-  }]));
+const [entrypoint, ...args] = process.argv.slice(1);
+if (entrypoint.endsWith("vitest.mjs")) {
+  appendFileSync(process.env.VITEST_LAUNCHER_CALLS, JSON.stringify({ entrypoint, args }) + "\\n");
+  if (args[0] === "list") {
+    const output = args.find((arg) => arg.startsWith("--json="));
+    writeFileSync(output.slice("--json=".length), JSON.stringify([{
+      projectName: "@paperclipai/server",
+      file: "server/src/__tests__/chat-channels.integration.test.ts",
+      name: "launcher regression case",
+      location: { line: 1, column: 1 },
+    }]));
+  }
+  process.exit(0);
 }
 `,
   );
@@ -39,7 +47,8 @@ if (args[0] === "exec" && args[1] === "vitest" && args[2] === "list") {
         env: {
           ...process.env,
           npm_execpath: pnpmCli,
-          PNPM_LAUNCHER_CALLS: calls,
+          NODE_OPTIONS: `--require=${preload}`,
+          VITEST_LAUNCHER_CALLS: calls,
         },
         encoding: "utf8",
       },
@@ -48,10 +57,11 @@ if (args[0] === "exec" && args[1] === "vitest" && args[2] === "list") {
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const invocations = readFileSync(calls, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
     assert.equal(invocations.length, 3, "chat sharding should collect twice and run once");
-    assert.deepEqual(invocations.map((args) => args.slice(0, 3)), [
-      ["exec", "vitest", "list"],
-      ["exec", "vitest", "list"],
-      ["exec", "vitest", "run"],
+    assert.ok(invocations.every(({ entrypoint }) => entrypoint.endsWith("vitest.mjs")));
+    assert.deepEqual(invocations.map(({ args }) => args[0]), [
+      "list",
+      "list",
+      "run",
     ]);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });

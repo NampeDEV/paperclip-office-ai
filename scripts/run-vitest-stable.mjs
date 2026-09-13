@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,11 @@ import { loadShardDurations, selectGeneralServerShard } from "./general-server-s
 import { assertSelectedTests, partitionTestLines } from "./test-line-shard.mjs";
 
 const repoRoot = process.cwd();
+const requireFromRepo = createRequire(path.join(repoRoot, "package.json"));
+const vitestEntrypoint = path.join(
+  path.dirname(requireFromRepo.resolve("vitest/package.json")),
+  "vitest.mjs",
+);
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const generalServerShardDurations = loadShardDurations(
   path.join(scriptsDir, "general-server-shard-durations.json"),
@@ -82,32 +88,6 @@ const serializedServerVitestArgs = [
   "--maxWorkers=1",
 ];
 const sourceOnlyVitestArgs = ["--exclude", "**/dist/**"];
-
-function resolvePnpmInvocation(env = process.env, nodeExecPath = process.execPath) {
-  const npmExecPath = env.npm_execpath?.trim();
-  if (npmExecPath && npmExecPath.toLowerCase().includes("pnpm")) {
-    if (/\.(cjs|mjs|js)$/i.test(npmExecPath)) {
-      return { command: nodeExecPath, argsPrefix: [npmExecPath] };
-    }
-    return { command: npmExecPath, argsPrefix: [] };
-  }
-
-  if (process.platform === "win32") {
-    const where = spawnSync("where.exe", ["pnpm.cmd"], { encoding: "utf8", windowsHide: true });
-    if (!where.error && where.status === 0) {
-      for (const commandPath of where.stdout.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)) {
-        const cliPath = path.join(path.dirname(commandPath), "node_modules", "pnpm", "bin", "pnpm.cjs");
-        if (existsSync(cliPath)) {
-          return { command: nodeExecPath, argsPrefix: [cliPath] };
-        }
-      }
-    }
-  }
-
-  return { command: process.platform === "win32" ? "pnpm.cmd" : "pnpm", argsPrefix: [] };
-}
-
-const pnpmInvocation = resolvePnpmInvocation();
 
 function walk(dir) {
   const entries = readdirSync(dir);
@@ -326,7 +306,7 @@ function runVitest(args, label, testShard = null) {
   if (testShard) {
     const collect = (filters, name) => {
       const output = path.join(testRoot, `${name}.json`);
-      const result = spawnSync(pnpmInvocation.command, [...pnpmInvocation.argsPrefix, "exec", "vitest", "list", ...sourceOnlyVitestArgs,
+      const result = spawnSync(process.execPath, [vitestEntrypoint, "list", ...sourceOnlyVitestArgs,
         ...filters, "--allowOnly=false", "--includeTaskLocation", `--json=${output}`], {
         cwd: repoRoot, env, stdio: "inherit",
       });
@@ -342,7 +322,7 @@ function runVitest(args, label, testShard = null) {
     console.log(`[test:run] chat shard ${testShard.index + 1}/${testShard.count}: ${selected.tests.length}/${collected.length} tests, ${selected.lines.length} source lines; exact filter coverage verified`);
     args.push("--allowOnly=false");
   }
-  const result = spawnSync(pnpmInvocation.command, [...pnpmInvocation.argsPrefix, "exec", "vitest", "run", ...sourceOnlyVitestArgs, ...args], {
+  const result = spawnSync(process.execPath, [vitestEntrypoint, "run", ...sourceOnlyVitestArgs, ...args], {
     cwd: repoRoot,
     env,
     stdio: "inherit",
