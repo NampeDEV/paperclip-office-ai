@@ -14,10 +14,13 @@ const manifestPath = resolve(packageRoot, "protocol/manifest.json");
 const fixturePath = resolve(packageRoot, "protocol/fixtures/evals/native-execution-seeded.json");
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 const fixtureCurrent = fixture.runner.catalogSha256 === PAPERCLIP_RUNNER_BUILD_METADATA.semanticCatalog.sha256;
+const normalizeLineEndings = (source) => source.replace(/\r\n/g, "\n");
 
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");
-  if (current !== generated) {
+  // Git may check this generated artifact out with CRLF on Windows. Its
+  // serialized content remains otherwise exact.
+  if (normalizeLineEndings(current) !== normalizeLineEndings(generated)) {
     process.stderr.write("semantic-tool-contracts.json is stale; run generate:semantic-contracts\n");
     process.exitCode = 1;
   }

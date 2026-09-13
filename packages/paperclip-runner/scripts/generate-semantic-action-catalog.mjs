@@ -10,10 +10,13 @@ const outputPath = resolve(
   "generated/semantic-action-catalog.json",
 );
 const generated = canonicalPaperclipSemanticActionCatalog();
+const normalizeLineEndings = (source) => source.replace(/\r\n/g, "\n");
 
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");
-  if (current !== generated) {
+  // Git may check this generated artifact out with CRLF on Windows. Its
+  // serialized content remains otherwise exact.
+  if (normalizeLineEndings(current) !== normalizeLineEndings(generated)) {
     process.stderr.write(
       "generated/semantic-action-catalog.json is stale; run generate:semantic-action-catalog\n",
     );

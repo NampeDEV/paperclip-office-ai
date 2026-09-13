@@ -89,9 +89,12 @@ const document = {
   lifecycleRequirements: lifecycleRequirements.map(([id, requirement, deterministicOwner]) => ({ id, requirement, deterministicOwner })),
 };
 const encoded = `${JSON.stringify(document, null, 2)}\n`;
+const normalizeLineEndings = (source) => source.replace(/\r\n/g, "\n");
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");
-  if (current !== encoded) throw new Error("protocol coverage artifact is stale; run pnpm generate:protocol-coverage");
+  // Git may check generated artifacts out with CRLF on Windows. Preserve the
+  // content gate while comparing the platform-neutral newline form.
+  if (normalizeLineEndings(current) !== encoded) throw new Error("protocol coverage artifact is stale; run pnpm generate:protocol-coverage");
 } else {
   await writeFile(outputPath, encoded);
   process.stdout.write(`Wrote ${outputPath}\n`);

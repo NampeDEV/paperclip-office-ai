@@ -6,3 +6,9 @@ packages/paperclip-runner/src/protocol/generated/** text eol=lf
 packages/paperclip-runner/src/drivers/acpx/generated-sidecar-contract.ts text eol=lf
 packages/paperclip-runner/runner/crates/runner-core/src/generated_acpx_sidecar_contract.rs text eol=lf
 packages/teams-catalog/catalog/** text eol=lf
+
+# Runner generated artifacts are serialized with LF by their generators.
+packages/paperclip-runner/spec/capability/** text eol=lf
+packages/paperclip-runner/generated/** text eol=lf
+packages/paperclip-runner/docs/capability-contract.md text eol=lf
+packages/paperclip-runner/src/generated/capability-contract.ts text eol=lf

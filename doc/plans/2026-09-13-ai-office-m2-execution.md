@@ -6,6 +6,7 @@ User approved continuation of the remaining platform work and M2 plan. Destinati
 
 - [x] Checkpoint M0/M1, preserve upstream history, push to the owner's repository.
 - [x] Open draft PR: https://github.com/NampeDEV/paperclip-office-ai/pull/1
+- [x] Publish the verified M2 increment as a stacked draft PR: https://github.com/NampeDEV/paperclip-office-ai/pull/27 (66 files at creation).
 - [x] Fix Windows protocol line endings, token-gate allowlist parsing, and direct Vitest invocation. Focused regressions pass.
 - [x] Install Rust and Windows C++ build tools required by the existing runner checks.
 - [ ] Complete full repository test, Rust, type and build gates; report unsupported paths separately.
