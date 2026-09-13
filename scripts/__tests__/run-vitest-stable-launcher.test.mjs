@@ -9,6 +9,26 @@ import test from "node:test";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = path.join(repoRoot, "scripts", "run-vitest-stable.mjs");
 
+test("dry-run partitions suites before Vitest is installed", () => {
+  const tempRoot = mkdtempSync(path.join(os.tmpdir(), "paperclip-no-vitest-"));
+  const preload = path.join(tempRoot, "without-vitest.cjs");
+  writeFileSync(preload, `const Module = require('node:module');
+const resolve = Module._resolveFilename;
+Module._resolveFilename = function(request, ...args) {
+  if (request.startsWith('vitest')) throw new Error('Vitest is not installed');
+  return resolve.call(this, request, ...args);
+};`);
+  try {
+    const result = spawnSync(process.execPath, ["--require", preload, script, "--mode", "general", "--group", "general-server", "--dry-run"], {
+      cwd: repoRoot, encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(JSON.parse(result.stdout));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("stable Vitest launcher invokes Vitest directly without pnpm exec", () => {
   const tempRoot = mkdtempSync(path.join(os.tmpdir(), "paperclip-vitest-launcher-"));
   const pnpmCli = path.join(tempRoot, "pnpm-test.cjs");

@@ -10,11 +10,6 @@ import { loadShardDurations, selectGeneralServerShard } from "./general-server-s
 import { assertSelectedTests, partitionTestLines } from "./test-line-shard.mjs";
 
 const repoRoot = process.cwd();
-const requireFromRepo = createRequire(path.join(repoRoot, "package.json"));
-const vitestEntrypoint = path.join(
-  path.dirname(requireFromRepo.resolve("vitest/package.json")),
-  "vitest.mjs",
-);
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const generalServerShardDurations = loadShardDurations(
   path.join(scriptsDir, "general-server-shard-durations.json"),
@@ -284,6 +279,12 @@ function selectSerializedSuites(routeTests, shardIndex, shardCount) {
 }
 
 function runVitest(args, label, testShard = null) {
+  // Policy CI partitions suites before installing dependencies. Resolve Vitest
+  // only for execution so --dry-run stays dependency-free.
+  const vitestEntrypoint = path.join(
+    path.dirname(createRequire(path.join(repoRoot, "package.json")).resolve("vitest/package.json")),
+    "vitest.mjs",
+  );
   console.log(`\n[test:run] ${label}`);
   invocationIndex += 1;
   const tempRootParent = process.platform === "win32" ? os.tmpdir() : "/tmp";
