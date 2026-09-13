@@ -21,6 +21,7 @@ import {
   __liveUpdatesTestUtils,
   LiveUpdatesProvider,
   useCompanyLiveEvent,
+  useLiveConnection,
   type CompanyLiveEventHandler,
 } from "./LiveUpdatesProvider";
 
@@ -129,7 +130,11 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
   let queryClient: QueryClient;
   let container: HTMLDivElement;
   let root: Root | null;
-  let sockets: Array<{ onmessage: ((event: MessageEvent) => void) | null }>;
+  let sockets: Array<{
+    onmessage: ((event: MessageEvent) => void) | null;
+    onopen: (() => void) | null;
+    onclose: (() => void) | null;
+  }>;
 
   beforeEach(() => {
     pushToast.mockClear();
@@ -180,6 +185,31 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
       data: JSON.stringify({ id: 1, companyId: "company-1", type: "heartbeat.run.status", createdAt: "2026-09-09T18:00:00.000Z", payload }),
     })));
   }
+
+  it("reports transport closure immediately and reconciles snapshots on reconnect", async () => {
+    function Connection() {
+      const connection = useLiveConnection();
+      return <output>{connection.status}|{connection.lastEventAt}</output>;
+    }
+    await reactAct(async () => {
+      root!.render(<QueryClientProvider client={queryClient}><LiveUpdatesProvider><Connection /></LiveUpdatesProvider></QueryClientProvider>);
+    });
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(container.textContent).toBe("connecting|");
+    await reactAct(async () => sockets[0].onopen!());
+    expect(container.textContent).toBe("connected|");
+    for (const event of [progressEvent(), progressEvent({ createdAt: "2020-01-01T00:00:00Z" }), progressEvent({ companyId: "other", createdAt: "2030-01-01T00:00:00Z" })]) {
+      await reactAct(async () => sockets[0].onmessage!(new MessageEvent("message", { data: JSON.stringify(event) })));
+    }
+    expect(container.textContent).toBe("connected|2026-07-15T00:00:00.000Z");
+    await reactAct(async () => sockets[0].onclose!());
+    expect(container.textContent).toBe("disconnected|2026-07-15T00:00:00.000Z");
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { timeout: 2000 });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await reactAct(async () => sockets[1].onopen!());
+    expect(invalidate).toHaveBeenCalledWith({ type: "active" }, { cancelRefetch: false });
+    expect(container.textContent).toBe("connected|2026-07-15T00:00:00.000Z");
+  });
 
   it("disconnects while hidden and reconciles active queries once on return", async () => {
     await receiveStatus({ runId: "child-run", agentId: "child-agent", status: "running" });

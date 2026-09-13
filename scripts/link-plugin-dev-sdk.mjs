@@ -72,13 +72,15 @@ export function linkSdkInto(packageDir) {
   const scopeDir = join(packageDir, "node_modules", "@paperclipai");
   const linkTarget = join(scopeDir, "plugin-sdk");
   const relativeSdkDir = relative(scopeDir, sdkDir);
+  const linkSource = process.platform === "win32" ? sdkDir : relativeSdkDir;
+  const linkType = process.platform === "win32" ? "junction" : "dir";
 
   mkdirSync(scopeDir, { recursive: true });
 
   try {
     const stat = lstatSync(linkTarget);
     if (stat.isSymbolicLink()) {
-      if (readlinkSync(linkTarget) === relativeSdkDir) {
+      if (readlinkSync(linkTarget) === linkSource) {
         // Already linked to the in-repo SDK; nothing to do.
         return false;
       }
@@ -93,6 +95,6 @@ export function linkSdkInto(packageDir) {
     if (error?.code !== "ENOENT") throw error;
   }
 
-  symlinkSync(relativeSdkDir, linkTarget, "dir");
+  symlinkSync(linkSource, linkTarget, linkType);
   return true;
 }

@@ -1,4 +1,4 @@
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,7 +57,7 @@ vi.mock("@paperclipai/adapter-utils/execution-target", async () => {
   };
 });
 
-import { execute } from "./execute.js";
+import { ensureCodexSkillsInjected, execute } from "./execute.js";
 
 // Mirror the sandbox core's restore closure: capture the assets `execute()`
 // declares, then during teardown invoke each asset's `restore` with an injected
@@ -276,5 +276,47 @@ describe("codex execute — outbound auth copy-back restore contribution", () =>
       hostAuth: subscriptionAuth({ accountId: "acct", marker: "host" }),
     });
     expect(result.executionResult.errorMessage).toBe("provider failed first");
+  });
+});
+
+describe("ensureCodexSkillsInjected", () => {
+  const cleanupDirs: string[] = [];
+
+  afterEach(async () => {
+    while (cleanupDirs.length > 0) {
+      const dir = cleanupDirs.pop();
+      if (dir) await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an injected skill directory reachable when file symlinks are unavailable", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "paperclip-codex-skill-link-"));
+    cleanupDirs.push(root);
+    const source = path.join(root, "repo", "skills", "paperclip");
+    const skillsHome = path.join(root, "managed-codex-home", "skills");
+    const target = path.join(skillsHome, "paperclip");
+    const logs: string[] = [];
+    await mkdir(source, { recursive: true });
+    await writeFile(path.join(source, "SKILL.md"), "# test skill\n", "utf8");
+
+    await ensureCodexSkillsInjected(
+      async (_stream, line) => {
+        logs.push(line);
+      },
+      {
+        skillsHome,
+        skillsEntries: [{
+          key: "paperclipai/paperclip/paperclip",
+          runtimeName: "paperclip",
+          source,
+        }],
+        desiredSkillNames: ["paperclipai/paperclip/paperclip"],
+      },
+    );
+
+    expect(await realpath(target)).toBe(await realpath(source));
+    expect(await readFile(path.join(target, "SKILL.md"), "utf8")).toBe("# test skill\n");
+    expect(logs.join("")).toContain('Injected Codex skill "paperclip"');
+    expect(logs.join("")).not.toContain("Failed to inject");
   });
 });

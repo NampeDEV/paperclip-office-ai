@@ -1,0 +1,22 @@
+{
+  "startedAt": "2026-09-13T10:09:06.059Z",
+  "transitions": [
+    {
+      "status": "running",
+      "lagMs": 236,
+      "observedAt": "2026-09-13T10:09:17.472Z"
+    },
+    {
+      "status": "cancelled",
+      "lagMs": 350,
+      "observedAt": "2026-09-13T10:12:28.831Z"
+    }
+  ],
+  "disconnectMs": 251,
+  "reconnected": true,
+  "runId": "36b88653-5d4a-4890-8fa0-e7d239ca7c02",
+  "finalStatus": "cancelled",
+  "error": "Cancelled before issue reassignment",
+  "taskStatus": "in_progress",
+  "cardText": "Executor\nrunning\nImplementation · codex_local\nRun Cancelled\nIn progress\nAssigned task: PAP-1\nAssigned project: Office MVP Verification\nUpdated 3m ago"
+}
