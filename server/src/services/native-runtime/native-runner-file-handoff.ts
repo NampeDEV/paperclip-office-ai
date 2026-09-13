@@ -231,7 +231,13 @@ async function assertNoSymlinkComponents(
   }
 }
 
-async function openedFilePath(fd: number): Promise<string> {
+/**
+ * Windows has no portable Node API for resolving an open descriptor back to
+ * its final path. Callers must keep the returned null branch paired with
+ * held-handle and path identity checks before accepting it.
+ */
+async function openedFilePath(fd: number): Promise<string | null> {
+  if (process.platform === "win32") return null;
   if (process.platform === "darwin") {
     const output = await new Promise<Buffer>((resolve, reject) => {
       execFile(
@@ -357,7 +363,10 @@ async function readVerifiedWorkspaceFile(
       throw new Error("paperclip_runner_file_handoff_file_changed");
     }
     const descriptorPath = await openedFilePath(handle.fd);
-    if (!isWithin(workspaceRoot, descriptorPath)) {
+    if (
+      descriptorPath !== null &&
+      !isWithin(workspaceRoot, descriptorPath)
+    ) {
       throw new Error("paperclip_runner_file_handoff_path_denied");
     }
     const body = Buffer.allocUnsafe(input.byteSize);
@@ -379,7 +388,8 @@ async function readVerifiedWorkspaceFile(
     const reopenedPath = await realpath(candidate);
     await assertNoSymlinkComponents(workspaceRoot, normalizedRelative);
     if (
-      descriptorPath !== reopenedPath ||
+      (descriptorPath !== null && descriptorPath !== reopenedPath) ||
+      !isWithin(workspaceRoot, reopenedPath) ||
       before.dev !== after.dev ||
       before.ino !== after.ino ||
       before.size !== after.size ||
@@ -549,11 +559,18 @@ async function scrubNativeRunnerStagingResidue(
         constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0),
       );
       try {
+        await assertNoSymlinkComponents(
+          stagingRoot,
+          path.relative(stagingRoot, candidate),
+        );
         const descriptorPath = await openedFilePath(handle.fd);
         const descriptorStat = await handle.stat();
         const candidateStat = await lstat(candidate);
+        const canonicalCandidate = await realpath(candidate);
         if (
-          !isWithin(stagingRoot, descriptorPath) ||
+          (descriptorPath !== null &&
+            !isWithin(stagingRoot, descriptorPath)) ||
+          !isWithin(stagingRoot, canonicalCandidate) ||
           !descriptorStat.isFile() ||
           descriptorStat.nlink !== 1 ||
           candidateStat.isSymbolicLink() ||
@@ -650,14 +667,29 @@ async function writeStagedAttachment(input: {
   let keepOpen = false;
   let safeToClear = false;
   try {
+    const relativeDestination = path.relative(
+      input.workspaceRoot,
+      input.destination,
+    );
+    if (!isWithin(input.workspaceRoot, input.destination)) {
+      throw new Error("paperclip_runner_attachment_staging_path_denied");
+    }
+    await assertNoSymlinkComponents(
+      input.workspaceRoot,
+      relativeDestination,
+    );
     const descriptorPath = await openedFilePath(handle.fd);
     const before = await handle.stat();
     const pathBefore = await lstat(input.destination);
+    const canonicalDestination = await realpath(input.destination);
     if (
       !before.isFile() ||
       before.nlink !== 1 ||
-      !isWithin(input.workspaceRoot, descriptorPath) ||
-      descriptorPath !== (await realpath(input.destination)) ||
+      (descriptorPath !== null &&
+        !isWithin(input.workspaceRoot, descriptorPath)) ||
+      !isWithin(input.workspaceRoot, canonicalDestination) ||
+      (descriptorPath !== null &&
+        descriptorPath !== canonicalDestination) ||
       pathBefore.isSymbolicLink() ||
       !sameFileIdentity(before, pathBefore)
     ) {
@@ -669,23 +701,29 @@ async function writeStagedAttachment(input: {
     await handle.sync();
     const after = await handle.stat();
     const pathAfter = await lstat(input.destination);
+    const reopenedDestination = await realpath(input.destination);
     await assertNoSymlinkComponents(
       input.workspaceRoot,
-      path.relative(input.workspaceRoot, input.destination),
+      relativeDestination,
     );
     if (
       after.size !== input.body.length ||
       after.nlink !== 1 ||
       pathAfter.isSymbolicLink() ||
       !sameFileIdentity(after, pathAfter) ||
-      descriptorPath !== (await realpath(input.destination))
+      !isWithin(input.workspaceRoot, reopenedDestination) ||
+      (descriptorPath !== null &&
+        descriptorPath !== reopenedDestination)
     ) {
       throw new Error("paperclip_runner_attachment_staging_path_denied");
     }
     keepOpen = true;
     return {
       relativePath: path
-        .relative(input.workspaceRoot, descriptorPath)
+        .relative(
+          input.workspaceRoot,
+          descriptorPath ?? reopenedDestination,
+        )
         .split(path.sep)
         .join("/"),
       cleanup: async () => {

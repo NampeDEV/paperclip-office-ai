@@ -6,6 +6,7 @@ import {
   link,
   mkdir,
   readFile,
+  rmdir,
   symlink,
   unlink,
   writeFile,
@@ -22,6 +23,7 @@ import {
   assets,
   companies,
   createDb,
+  EMBEDDED_POSTGRES_TEST_TIMEOUT_MS,
   heartbeatRuns,
   issueAttachments,
   issueComments,
@@ -106,7 +108,7 @@ describe("native runner file handoff", () => {
       .update(issues)
       .set({ executionRunId: runId })
       .where(eq(issues.id, issueId));
-  });
+  }, EMBEDDED_POSTGRES_TEST_TIMEOUT_MS);
 
   afterAll(async () => {
     await temporary?.cleanup();
@@ -293,20 +295,23 @@ describe("native runner file handoff", () => {
   it("fails closed for remote targets, symlinks, traversal, hash drift, and foreign bindings", async () => {
     const body = Buffer.from("untrusted path checks\n", "utf8");
     await writeFile(path.join(workspaceRoot, "checked.txt"), body);
-    await symlink(
-      path.join(workspaceRoot, "checked.txt"),
-      path.join(workspaceRoot, "linked.txt"),
-    );
-    await mkdir(path.join(workspaceRoot, "real-directory"), {
+    const realDirectory = path.join(workspaceRoot, "real-directory");
+    await mkdir(realDirectory, {
       recursive: true,
     });
-    await writeFile(
-      path.join(workspaceRoot, "real-directory", "nested.txt"),
-      body,
+    const nestedFile = path.join(realDirectory, "nested.txt");
+    await writeFile(nestedFile, body);
+    await symlink(
+      process.platform === "win32"
+        ? realDirectory
+        : path.join(workspaceRoot, "checked.txt"),
+      path.join(workspaceRoot, "linked.txt"),
+      process.platform === "win32" ? "junction" : undefined,
     );
     await symlink(
-      path.join(workspaceRoot, "real-directory"),
+      realDirectory,
       path.join(workspaceRoot, "linked-directory"),
+      process.platform === "win32" ? "junction" : undefined,
     );
     await writeFile(path.join(workspaceRoot, "hardlink-origin.txt"), body);
     await link(
@@ -320,7 +325,13 @@ describe("native runner file handoff", () => {
       ),
     ).rejects.toThrow("paperclip_runner_file_handoff_remote_unsupported");
     await expect(
-      authority().execute(callFor("linked.txt", body, "symlink-denied")),
+      authority().execute(
+        callFor(
+          process.platform === "win32" ? "linked.txt/nested.txt" : "linked.txt",
+          body,
+          "symlink-denied",
+        ),
+      ),
     ).rejects.toThrow("paperclip_runner_file_handoff_symlink_denied");
     await expect(
       authority().execute(
@@ -539,28 +550,42 @@ describe("native runner file handoff", () => {
       "process-2147483647-0-00000000-0000-4000-8000-000000009299",
     );
     await mkdir(crashDirectory, { recursive: true });
-    const outsideResidue = path.join(temporaryRoot, "outside-residue.txt");
+    const outsideResidueRoot = path.join(temporaryRoot, "outside-residue");
+    const outsideResidue =
+      process.platform === "win32"
+        ? path.join(outsideResidueRoot, "keep.txt")
+        : `${outsideResidueRoot}.txt`;
     const linkedResidue = path.join(crashDirectory, "linked-residue");
+    if (process.platform === "win32")
+      await mkdir(outsideResidueRoot, { recursive: true });
     await writeFile(outsideResidue, "outside bytes must remain intact");
-    await symlink(outsideResidue, linkedResidue);
-    await expect(
-      stageNativeRunnerWakeAttachments({
-        db,
-        binding: {
-          companyId,
-          issueId,
-          runId,
-          agentId,
-          workspaceRoot,
-          executionTargetKind: "local",
-        },
-        storage,
-      }),
-    ).rejects.toThrow("paperclip_runner_attachment_staging_residue_denied");
-    await expect(readFile(outsideResidue, "utf8")).resolves.toBe(
-      "outside bytes must remain intact",
+    await symlink(
+      process.platform === "win32" ? outsideResidueRoot : outsideResidue,
+      linkedResidue,
+      process.platform === "win32" ? "junction" : undefined,
     );
-    await unlink(linkedResidue);
+    try {
+      await expect(
+        stageNativeRunnerWakeAttachments({
+          db,
+          binding: {
+            companyId,
+            issueId,
+            runId,
+            agentId,
+            workspaceRoot,
+            executionTargetKind: "local",
+          },
+          storage,
+        }),
+      ).rejects.toThrow("paperclip_runner_attachment_staging_residue_denied");
+      await expect(readFile(outsideResidue, "utf8")).resolves.toBe(
+        "outside bytes must remain intact",
+      );
+    } finally {
+      if (process.platform === "win32") await rmdir(linkedResidue);
+      else await unlink(linkedResidue);
+    }
 
     const crashedResidue = path.join(crashDirectory, "opaque-residue");
     await writeFile(crashedResidue, "bytes retained by an abrupt prior crash");
