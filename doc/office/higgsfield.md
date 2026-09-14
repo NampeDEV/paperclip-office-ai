@@ -16,6 +16,12 @@ The automatic registration attempt failed closed with `oauth_dcr_response_invali
 
 The actual native callback for this instance is `http://localhost:3100/api/tools/oauth/callback` (not the numeric-loopback spelling). Registration must match the URI returned by the native OAuth start flow. After the user completed browser login, the callback was rejected with `oauth_issuer_mismatch`. The issuer check remains intact; the connection is still disabled and has no verified access token or tool catalog. Refresh-token support and generation are unverified. Reconcile the provider's callback issuer against its advertised issuer before another authorization attempt; do not bypass the check.
 
+## Callback diagnosis — 14 September 2026
+
+The existing signed-in session reached consent successfully. The callback again failed before token exchange. A temporary local diagnostic recorded only the two origins: the advertised and bound issuer was `https://clerk.higgsfield.ai`, while the callback returned `https://higgsfield.ai`. The provider's authorization-server metadata still advertises the Clerk issuer. The main-site metadata path did not return an authorization-server document. The temporary diagnostic was removed from source after capture; no code or token was logged.
+
+This is a provider metadata/callback inconsistency, not missing user login. Keep the connection disabled until the provider aligns the callback issuer with its metadata or documents a compatible configuration. Do not override the expected issuer or weaken the mix-up protection to make this attempt pass.
+
 ## Native setup
 
 POST `/api/companies/{companyId}/tools/apps/connect` with:
