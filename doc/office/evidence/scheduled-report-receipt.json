@@ -1,0 +1,19 @@
+{
+  "verifiedAt": "2026-09-14T03:45:49.481Z",
+  "companyId": "480c920e-2560-4004-8a81-af9fe850bd5a",
+  "projectId": "c130a391-7ed8-43a1-a9b5-c7a404a6773b",
+  "issueId": "91f612ed-9a05-4d29-90de-56f5cb4cba1a",
+  "attachmentId": "fb24f5e1-bf20-43f8-acc7-75ad39f660ec",
+  "workProductId": "245c65c4-6491-417f-8c39-7d6f964b1ba1",
+  "byteSize": 7456,
+  "sha256": "71dc703342a4f2a8d48af6a176ad701088cf48cd28ba675a2c5e42f6eb789b40",
+  "sourceTasks": 3,
+  "priorArtifactCount": 3,
+  "routineRunId": "e6818106-f7d9-442f-86ed-b7730f49b48d",
+  "source": "schedule",
+  "triggeredAt": "2026-09-14T03:30:31.189Z",
+  "providerRunId": "4a13f69b-6c76-4def-a205-cf7fa8917fe3",
+  "providerRunStatus": "timed_out",
+  "taskStatus": "in_review",
+  "reviewState": "needs_board_review"
+}

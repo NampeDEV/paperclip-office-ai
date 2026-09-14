@@ -18,3 +18,7 @@ User approved continuation of the remaining platform work and M2 plan. Destinati
 - [ ] Review integrated changes, update evidence and PR, inspect CI results.
 
 Each checkbox requires actual evidence. An installed toolchain is not a passing build; an OAuth configuration is not a connected provider; a created routine is not a verified report. Use the existing company/issue/run/artifact, catalog, connection, and inbox services. Do not introduce parallel state or schedulers.
+
+## 14 September checkpoint
+
+Full typecheck and build passed. The scheduled report produced a verified native attachment and review work product, but its provider run timed out; the executor timeout was raised from 180 to 900 seconds for later runs. The new limit is not yet proven by a successful provider exit. Office OpenAPI coverage was repaired and its eight tests pass. Full local tests and GitHub CI remain non-green; see `doc/office/windows-tests.md`. Higgsfield remains blocked by the verified OAuth issuer mismatch.

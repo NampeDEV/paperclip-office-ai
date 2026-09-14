@@ -63,3 +63,11 @@ The manual routine produced `office-activity-2026-09-13.md` (5,847 bytes) as an 
 The task reached `in_review` with the board as assignee. The provider run was cancelled with `issue_reassigned` as a consequence of that handoff, after upload; it is not recorded as a successful provider exit. The report bytes and complete task inventory were independently checked through the native API.
 
 After this verification, the existing daily 09:00 Asia/Bangkok trigger was enabled. The routine uses `skip_if_active`: a report still awaiting board review can prevent another overlapping report. This is the configured concurrency rule, not an offline agent or failed schedule. Setup deliberately refuses to overwrite an already-enabled schedule.
+
+## Scheduled delivery — 14 September 2026
+
+After the stopped local service restarted, the native scheduler created PAP-3 at 10:30 Bangkok time. It produced a 7,456-byte report with three tasks and three pre-existing artifact records in each scope. Independent API read-back verified every inventory ID and the attachment hash. The artifact is `ready_for_review` with `needs_board_review`, and the task is `in_review`.
+
+The provider run subsequently ended `timed_out`; it is not a successful provider exit. The uploaded report and review state were preserved. See `evidence/scheduled-report-receipt.json` and `evidence/office-activity-2026-09-14.md`. The next configured trigger is 15 September at 09:00 Bangkok time; this scheduled delivery did not occur at 09:00 while the local service was stopped.
+
+The run reports `Timed out after 180s`, matching Executor's earlier short acceptance-test setting. Its native adapter timeout was increased to 900 seconds and read back on 14 September. No duplicate report was started. A successful provider exit under the new limit remains unverified until a future run.

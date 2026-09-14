@@ -6,6 +6,8 @@ import {
 import { Router } from "express";
 import { z } from "zod";
 import {
+  officeSceneScopeQuerySchema,
+  saveOfficeSceneSchema,
   createAiConnectionSchema,
   aiConnectionLoginIntentSchema,
   localAiConnectionSchema,
@@ -1286,6 +1288,9 @@ const BOARD_ONLY_PREFIXES = [
 ];
 
 const BOARD_ONLY_OPERATIONS = new Set([
+  "PUT /api/companies/{companyId}/office-scene",
+  "POST /api/companies/{companyId}/office-scene/background",
+  "POST /api/companies/{companyId}/office-scene/character",
   "GET /api/companies/{companyId}/ai-connections",
   "POST /api/companies/{companyId}/ai-connections",
   "POST /api/companies/{companyId}/ai-connections/local",
@@ -1851,6 +1856,40 @@ registry.registerPath({
 });
 
 // ─── Companies ───────────────────────────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/companies/{companyId}/office-scene",
+  tags: ["office"],
+  summary: "Get a company or project Office scene",
+  request: { params: paramsSchemaFromPath("/api/companies/{companyId}/office-scene"), query: officeSceneScopeQuerySchema },
+  responses: { 200: r.ok(), 400: r.badRequest, 403: r.forbidden, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/companies/{companyId}/office-scene",
+  tags: ["office"],
+  summary: "Save an Office scene using its expected revision",
+  description: "Requires board access. A stale revision returns 409 without overwriting the saved scene.",
+  request: { params: paramsSchemaFromPath("/api/companies/{companyId}/office-scene"), body: jsonBody(saveOfficeSceneSchema) },
+  responses: { 200: r.ok(), 201: r.ok(), 400: r.badRequest, 403: r.forbidden, 404: r.notFound, 409: r.conflict, 422: { description: "Invalid scene asset or scope", content: { "application/json": { schema: ErrorSchema } } } },
+});
+
+for (const kind of ["background", "character"] as const) {
+  registry.registerPath({
+    method: "post",
+    path: `/api/companies/{companyId}/office-scene/${kind}`,
+    tags: ["office"],
+    summary: `Upload Office ${kind} art`,
+    description: "Requires board access. Accepts a decoded raster image up to 5 MiB in the file field.",
+    request: {
+      params: paramsSchemaFromPath(`/api/companies/{companyId}/office-scene/${kind}`),
+      body: { required: true, content: { "multipart/form-data": { schema: { type: "object", required: ["file"], properties: { file: { type: "string", format: "binary" } } } } } },
+    },
+    responses: { 201: r.ok(), 400: r.badRequest, 403: r.forbidden, 422: { description: "Invalid or oversized raster image", content: { "application/json": { schema: ErrorSchema } } } },
+  });
+}
 
 registry.registerPath({
   method: "get",

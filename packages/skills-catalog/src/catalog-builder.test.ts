@@ -30,6 +30,7 @@ describe("skills catalog manifest", () => {
         "  - pull-requests",
       ],
       files: {
+        "references/__init__.md": "# First in every locale\n",
         "references/checklist.md": "# Checklist\n",
       },
     });
@@ -55,6 +56,7 @@ describe("skills catalog manifest", () => {
     });
     expect(result.manifest.skills[0]!.files.map((file) => file.path)).toEqual([
       "SKILL.md",
+      "references/__init__.md",
       "references/checklist.md",
     ]);
     expect(result.manifest.skills[0]!.contentHash).toMatch(/^sha256:[a-f0-9]{64}$/);

@@ -43,5 +43,14 @@ be truncated when the current workspace path still names a different file.
 
 | Check | State |
 | --- | --- |
-| `pnpm -r typecheck` and `pnpm build` | Deferred until concurrent Office contract edits settle, so their receipts cover one coherent tree. |
-| `pnpm test:run` | The prior full invocation was interrupted after reporting broader upstream failures; it is not a green receipt. Re-run after focused platform fixes and complete launch validation. |
+| `pnpm -r typecheck` | Passed on 14 September 2026, exit 0, 03:25:30–03:28:52 UTC. Rust release compilation completed in the prior run; the interrupted parent command was not counted as a pass. |
+| `pnpm build` | Passed on 14 September 2026, exit 0, 03:36:34–03:39:11 UTC. All 1,138 copied server/vendor/adapter files were compared byte-for-byte with their sources; the CLI bundle exists. |
+| `pnpm test:run` | Running with the default serialized worker policy. Failures have been observed in Slack callback ordering and workspace runtime service tests. This is not a passing gate. Earlier interrupted runs remain incomplete evidence. |
+
+The remaining Windows build fixes replace Unix-only copy/remove/chmod commands with Node filesystem operations. Generated runner checks accept CRLF without changing content checks, and workflow traceability imports use a file URL. Skill catalog text uses LF and inventory sorting uses an explicit English locale; all existing catalog hashes remain unchanged. Six catalog-builder tests pass after this change.
+
+## CI follow-up — 14 September 2026
+
+CI on `ca4393a6895c01d978361e08a908a212d19eb6f7` passed build, typecheck, runner verification, all five general-server shards, and workspace shards. Serialized shards 1 and 4 and E2E shard 3 failed. Office was missing from the OpenAPI route inventory and document; all four routes now have coverage, path/query/body contracts, upload fields, and board-only mutation metadata. The final OpenAPI suite passes all eight tests, and the server typecheck passes.
+
+The routine revision restore failure did not reproduce locally: all 15 routine route tests passed without changing production code. The CI signoff test could not observe an issue-bound heartbeat run. These CI results remain unresolved until a new run confirms them. No permission or execution ownership check was relaxed.

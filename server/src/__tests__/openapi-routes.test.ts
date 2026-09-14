@@ -53,6 +53,7 @@ const apiPrefixes: Record<string, string> = {
   "llms.ts": "/api",
   "managed-agent-profiles.ts": "/api",
   "onboarding-seed.ts": "/api",
+  "office.ts": "/api",
   "openapi.ts": "/api",
   "plugin-ui-static.ts": "/api",
   "plugins.ts": "/api",
@@ -255,6 +256,15 @@ describe("openapi routes", () => {
       AgentBearerAuth: { type: "http", scheme: "bearer" },
     });
     expect(res.body.paths["/api/health"].get.security).toEqual([]);
+    const office = res.body.paths["/api/companies/{companyId}/office-scene"];
+    expect(office.get.parameters).toContainEqual(expect.objectContaining({ name: "companyId", in: "path", required: true }));
+    expect(office.get.parameters).toContainEqual(expect.objectContaining({ name: "projectId", in: "query", required: false }));
+    expect(office.put.responses["409"].description).toBe("Conflict");
+    expect(office.put["x-paperclip-authorization"]).toEqual({ actor: "board" });
+    for (const kind of ["background", "character"]) {
+      expect(res.body.paths[`/api/companies/{companyId}/office-scene/${kind}`].post.requestBody.content["multipart/form-data"].schema)
+        .toMatchObject({ required: ["file"], properties: { file: { type: "string", format: "binary" } } });
+    }
     expect(res.body.paths["/api/mcp/project-tools"].post.security).toEqual([{ AgentRunAuth: [] }]);
     expect(res.body.paths["/api/mcp/project-tools"].post["x-paperclip-authorization"]).toEqual({ actor: "agent", heartbeatBound: true, taskBound: true });
     expect(res.body.paths["/mcp/gateways/{gatewayPublicId}"].post.security).toEqual([]);

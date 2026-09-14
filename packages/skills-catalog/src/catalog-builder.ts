@@ -603,7 +603,7 @@ async function collectReferencedSkillFiles(
   files.sort((a, b) => {
     if (a.path === SKILL_ENTRYPOINT) return -1;
     if (b.path === SKILL_ENTRYPOINT) return 1;
-    return a.path.localeCompare(b.path);
+    return a.path.localeCompare(b.path, "en");
   });
   return files;
 }
@@ -727,7 +727,7 @@ async function collectSkillFiles(
   files.sort((a, b) => {
     if (a.path === SKILL_ENTRYPOINT) return -1;
     if (b.path === SKILL_ENTRYPOINT) return 1;
-    return a.path.localeCompare(b.path);
+    return a.path.localeCompare(b.path, "en");
   });
 
   if (!files.some((file) => file.path === SKILL_ENTRYPOINT && file.kind === "skill")) {
