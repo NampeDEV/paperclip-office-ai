@@ -45,7 +45,7 @@ be truncated when the current workspace path still names a different file.
 | --- | --- |
 | `pnpm -r typecheck` | Passed on 14 September 2026, exit 0, 03:25:30–03:28:52 UTC. Rust release compilation completed in the prior run; the interrupted parent command was not counted as a pass. |
 | `pnpm build` | Passed on 14 September 2026, exit 0, 03:36:34–03:39:11 UTC. All 1,138 copied server/vendor/adapter files were compared byte-for-byte with their sources; the CLI bundle exists. |
-| `pnpm test:run` | Running with the default serialized worker policy. Failures have been observed in Slack callback ordering and workspace runtime service tests. This is not a passing gate. Earlier interrupted runs remain incomplete evidence. |
+| `pnpm test:run` | Incomplete: the process is no longer present and no final receipt was written. The last log records failures in Slack ordering, workspace runtime, adapter, and spool tests. This is not a passing gate. |
 
 The remaining Windows build fixes replace Unix-only copy/remove/chmod commands with Node filesystem operations. Generated runner checks accept CRLF without changing content checks, and workflow traceability imports use a file URL. Skill catalog text uses LF and inventory sorting uses an explicit English locale; all existing catalog hashes remain unchanged. Six catalog-builder tests pass after this change.
 
@@ -54,3 +54,5 @@ The remaining Windows build fixes replace Unix-only copy/remove/chmod commands w
 CI on `ca4393a6895c01d978361e08a908a212d19eb6f7` passed build, typecheck, runner verification, all five general-server shards, and workspace shards. Serialized shards 1 and 4 and E2E shard 3 failed. Office was missing from the OpenAPI route inventory and document; all four routes now have coverage, path/query/body contracts, upload fields, and board-only mutation metadata. The final OpenAPI suite passes all eight tests, and the server typecheck passes.
 
 The routine revision restore failure did not reproduce locally: all 15 routine route tests passed without changing production code. The CI signoff test could not observe an issue-bound heartbeat run. These CI results remain unresolved until a new run confirms them. No permission or execution ownership check was relaxed.
+
+CI run 34805107285 on `9f01542155d0e37247877d0801238160529ef4fa` passed all three E2E shards and all five serialized server shards, including Office OpenAPI and routine restore. Build, typecheck, runner verification, and all workspace shards also passed. The only failing test lane was general server shard 3: two assertions still expected Unix copy commands (3,862 tests passed in that lane). The build test now executes the actual Node copy command against isolated nested fixtures, including hidden files, and checks all four output directories. All six focused build-script tests pass. A new CI run must verify this final test change.
