@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { test } from "node:test";
 
-import { capabilityGroups, validateInventorySchema, validateInventories } from "./lib/capability-inventory.mjs";
+import { capabilityGroups, decodeInventory, validateInventorySchema, validateInventories } from "./lib/capability-inventory.mjs";
 
 const inventorySchema = JSON.parse(await readFile(
   resolve(import.meta.dirname, "../spec/capability/inventory.schema.json"),
@@ -64,6 +64,12 @@ test("capability inventory validator accepts exact baseline counts", () => {
   const inventories = validInventories();
   assert.deepEqual(validateInventorySchema(inventories, inventorySchema), []);
   assert.deepEqual(validateInventories(inventories), []);
+});
+
+test("capability inventory decoder accepts the generated CRLF header", () => {
+  const value = { schemaVersion: 2, rows: [] };
+  const source = "# GENERATED FILE — DO NOT EDIT. Run pnpm generate:capability-inventory.\r\n" + JSON.stringify(value);
+  assert.deepEqual(decodeInventory(source), value);
 });
 
 test("capability inventory validator rejects duplicate rows and invalid dispositions", () => {

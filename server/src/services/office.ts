@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import sharp from "sharp";
-import { agents, assets, officeScenes, type Db } from "@paperclipai/db";
+import { agents, assets, officeScenes, projects, type Db } from "@paperclipai/db";
 import {
   OFFICE_SCENE_MAX_IMAGE_DIMENSION,
   OFFICE_SCENE_MAX_IMAGE_PIXELS,
@@ -60,7 +60,7 @@ export async function readOfficeSceneRasterMetadata(body: Buffer) {
   }
 }
 
-async function readStoredOfficeBackground(
+async function readStoredOfficeSceneRaster(
   storage: StorageService,
   companyId: string,
   asset: { objectKey: string; byteSize: number },
@@ -98,22 +98,50 @@ async function readStoredOfficeBackground(
 }
 
 export function officeSceneService(db: Db, storage: StorageService) {
+  const sceneScope = (projectId: string | null) => (
+    projectId === null ? isNull(officeScenes.projectId) : eq(officeScenes.projectId, projectId)
+  );
+
+  async function assertProjectScope(companyId: string, projectId: string | null) {
+    if (projectId === null) return;
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+      .then((rows) => rows[0] ?? null);
+    if (!project) throw unprocessable("Project scope must belong to this company");
+  }
+
+  async function readOwnedRasterAsset(companyId: string, assetId: string, label: string) {
+    const asset = await db
+      .select({
+        contentType: assets.contentType,
+        objectKey: assets.objectKey,
+        byteSize: assets.byteSize,
+      })
+      .from(assets)
+      .where(and(eq(assets.id, assetId), eq(assets.companyId, companyId)))
+      .then((rows) => rows[0] ?? null);
+    const declaredContentType = asset ? canonicalContentType(asset.contentType) : null;
+    if (!asset || !Object.values(OFFICE_BACKGROUND_CONTENT_TYPES).includes(declaredContentType!)) {
+      throw unprocessable(`${label} must be a supported raster image in this company`);
+    }
+    return {
+      asset,
+      declaredContentType,
+      metadata: await readStoredOfficeSceneRaster(storage, companyId, asset),
+    };
+  }
+
   async function assertSceneReferences(companyId: string, input: SaveOfficeScene) {
+    await assertProjectScope(companyId, input.projectId);
+
     if (input.backgroundAssetId) {
-      const asset = await db
-        .select({
-          contentType: assets.contentType,
-          objectKey: assets.objectKey,
-          byteSize: assets.byteSize,
-        })
-        .from(assets)
-        .where(and(eq(assets.id, input.backgroundAssetId), eq(assets.companyId, companyId)))
-        .then((rows) => rows[0] ?? null);
-      const declaredContentType = asset ? canonicalContentType(asset.contentType) : null;
-      if (!asset || !Object.values(OFFICE_BACKGROUND_CONTENT_TYPES).includes(declaredContentType!)) {
-        throw unprocessable("Background asset must be a supported raster image in this company");
-      }
-      const metadata = await readStoredOfficeBackground(storage, companyId, asset);
+      const { declaredContentType, metadata } = await readOwnedRasterAsset(
+        companyId,
+        input.backgroundAssetId,
+        "Background asset",
+      );
       if (
         metadata.contentType !== declaredContentType ||
         metadata.imageWidth !== input.imageWidth ||
@@ -121,6 +149,12 @@ export function officeSceneService(db: Db, storage: StorageService) {
       ) {
         throw unprocessable("Background asset dimensions or type do not match the scene");
       }
+    }
+
+    // Character art is decorative only. It is independently positioned and
+    // must be an owned, fully decodable raster before a scene can reference it.
+    for (const assetId of new Set(input.characters.map((character) => character.assetId))) {
+      await readOwnedRasterAsset(companyId, assetId, "Character asset");
     }
 
     const agentIds = input.seats.flatMap((seat) => (seat.agentId ? [seat.agentId] : []));
@@ -135,12 +169,28 @@ export function officeSceneService(db: Db, storage: StorageService) {
   }
 
   return {
-    get: (companyId: string) =>
-      db
+    async get(companyId: string, projectId: string | null = null) {
+      await assertProjectScope(companyId, projectId);
+      const scopedScene = await db
         .select()
         .from(officeScenes)
-        .where(eq(officeScenes.companyId, companyId))
-        .then((rows) => rows[0] ?? null),
+        .where(and(
+          eq(officeScenes.companyId, companyId),
+          eq(officeScenes.isActive, true),
+          sceneScope(projectId),
+        ))
+        .then((rows) => rows[0] ?? null);
+      if (scopedScene || projectId === null) return scopedScene;
+      return db
+        .select()
+        .from(officeScenes)
+        .where(and(
+          eq(officeScenes.companyId, companyId),
+          eq(officeScenes.isActive, true),
+          isNull(officeScenes.projectId),
+        ))
+        .then((rows) => rows[0] ?? null);
+    },
 
     async save(companyId: string, input: SaveOfficeScene) {
       await assertSceneReferences(companyId, input);
@@ -151,6 +201,7 @@ export function officeSceneService(db: Db, storage: StorageService) {
         imageWidth: input.imageWidth,
         imageHeight: input.imageHeight,
         seats: input.seats,
+        characters: input.characters,
         isActive: true,
         updatedAt: now,
       };
@@ -158,19 +209,24 @@ export function officeSceneService(db: Db, storage: StorageService) {
       if (input.revision === 0) {
         const [scene] = await db
           .insert(officeScenes)
-          .values({ ...values, companyId, revision: 1 })
-          .onConflictDoNothing({ target: officeScenes.companyId })
+          .values({ ...values, companyId, projectId: input.projectId, revision: 1 })
+          .onConflictDoNothing()
           .returning();
-        if (!scene) throw conflict("Office scene was already created. Reload and try again.");
+        if (!scene) throw conflict("Office scene already exists for this scope. Reload and try again.");
         return { scene, created: true };
       }
 
       const [scene] = await db
         .update(officeScenes)
         .set({ ...values, revision: input.revision + 1 })
-        .where(and(eq(officeScenes.companyId, companyId), eq(officeScenes.revision, input.revision)))
+        .where(and(
+          eq(officeScenes.companyId, companyId),
+          eq(officeScenes.isActive, true),
+          sceneScope(input.projectId),
+          eq(officeScenes.revision, input.revision),
+        ))
         .returning();
-      if (!scene) throw conflict("Office scene changed. Reload and try again.");
+      if (!scene) throw conflict("Office scene changed in this scope. Reload and try again.");
       return { scene, created: false };
     },
   };

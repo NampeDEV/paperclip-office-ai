@@ -26,13 +26,13 @@ The pinned upstream checkout has a patched-dependency/lockfile mismatch, so its 
 
 The verification company is **Paperclip AI Office** (`PAP`). It contains the **Office MVP Verification** project and Planner, Executor and Reviewer agents using the existing local Codex CLI authentication. Their workspaces are under `.paperclip-local/workspaces`; the smoke project has its own isolated Git repository. Agent schedules are disabled. Executor accepts explicit on-demand work.
 
-This instance uses Paperclip's supported legacy Codex adapter by setting **Experimental → Native Runner** off. Rust Cargo is unavailable on this machine, so the native runner binary has not been built. Windows directory links use junctions; managed Codex authentication uses the existing synchronized auth handling with a file-copy fallback when Windows denies a symbolic link.
+This instance uses Paperclip's supported legacy Codex adapter by setting **Experimental → Native Runner** off. Rust and Windows C++ build tools are now installed, and the runner's Rust typecheck passed; this does not change the adapter used by the verified local workflow. Windows directory links use junctions; managed Codex authentication uses the existing synchronized auth handling with a file-copy fallback when Windows denies a symbolic link.
 
 ## Office workflow
 
 1. Open **Office**, then **Edit layout**. Upload a verified PNG/JPEG/WebP/GIF image up to 5 MiB or retain the bundled night-office illustration.
 2. Assign each agent to at most one seat. Drag or resize seats, or edit normalized geometry using the numeric controls. Preview, then save.
-3. Select an agent or task to inspect its native overview, discussion, activity and files. The project selector limits task content; an agent's actual linked project remains explicit.
+3. Select an agent or task to inspect its native overview, discussion, activity and files. The project selector limits task content and selects its saved scene. A project without a scene uses the company layout; editing saves a separate project layout. Character art is decorative and moves independently of agent seats.
 4. Run status, agent lifecycle and task workflow are independent. A successful run can leave its task in review. A lost live connection marks the snapshot stale; reconnect reloads current data.
 5. Use native controls or the linked native detail pages. In this pinned Paperclip version, pausing an agent also requests cancellation of its active runs; the Inspector explains that native behavior. Use the selected-run cancellation control when targeting one run. Failed requests must remain visible.
 
@@ -40,4 +40,4 @@ A save rejected with HTTP 409 means another editor saved first. The current draf
 
 ## Verification and next work
 
-See `verification.md` for commands actually run, live evidence and remaining platform limitations. See `../plans/2026-09-13-ai-office-mvp.md` for the implementation ledger and `../plans/2026-09-13-ai-office-next.md` for the new M2 plan. M2 integrations are planned separately; this local implementation does not claim a cloud deployment or a connected media provider.
+See `verification.md` for M0/M1 evidence and `../plans/2026-09-13-ai-office-m2-execution.md` for current delivery status. The native team preset is documented in `team-preset.md`, the verified daily report in `reports.md`, and the unresolved media-provider connection in `higgsfield.md`. No cloud deployment is claimed.

@@ -153,6 +153,12 @@ export interface CatalogTeamImportOptions {
 export interface CatalogTeamInstallOptions extends CatalogTeamImportOptions {
   adapterOverrides?: Record<string, CompanyPortabilityAdapterOverride>;
   secretValues?: Record<string, string>;
+  /**
+   * Optional caller key for a durable, company-and-catalog-scoped install
+   * receipt. Reusing the key with different options fails. Keyed requests
+   * accept adapterType-only overrides and no secret values or adapterConfig.
+   */
+  idempotencyKey?: string;
 }
 
 export type CatalogTeamSkillPreparationAction =

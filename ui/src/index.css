@@ -2881,35 +2881,8 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
    * allow ui/src/pages/IssueChatUxLab.tsx — first-party intentional one-off decoration (demo/UX-lab page): hero/card gradients + shadows reverted from singleton tokens per DECISION-SHEET.md B1 user ruling
    * allow ui/src/pages/SystemNoticeUxLab.tsx — first-party intentional one-off decoration (demo/UX-lab page): hero/card gradients + shadows reverted from singleton tokens per DECISION-SHEET.md B1 user ruling
 
-   Test-fixture hex-literal policy (Batch 4, resolving TOKEN-AUDIT.md section
-   8 item 10 "Needs human decision" for these specific sites): the following
-   *.test.tsx files pass hex-literal strings as MOCK PROP / MOCK API-RESPONSE
-   DATA (label/project/company/brand `color` fields, xterm.js theme-mock
-   assertions) — not as Tailwind class strings or CSS-in-JS style
-   declarations. These are the test-file counterpart of the same
-   "functional/persisted data, not a rendered CSS value" category Batch 1
-   already allowlisted in production source (see CompanySkills.tsx,
-   IssueProperties.tsx, IssueColumns.tsx above); tokenizing them would
-   replace realistic-looking mock data with `var()` strings that no longer
-   resemble what a real API response contains, without touching any
-   rendered pixel. Each file is listed individually for reviewability.
-   * allow ui/src/components/IssueFiltersPopover.test.tsx — mock label color prop
-   * allow ui/src/components/IssueProperties.test.tsx — mock label/project color fixtures
-   * allow ui/src/components/MarkdownBody.test.tsx — mock project color fed through a mention-href builder
-   * allow ui/src/components/MarkdownEditor.test.tsx — mock projectColor mention fixture
-   * allow ui/src/components/NewIssueDialog.test.tsx — mock label color fixtures
-   * allow ui/src/components/ProjectTile.test.tsx — mock project color prop
-   * allow ui/src/components/RoutineRunVariablesDialog.test.tsx — mock label color fixture
-   * allow ui/src/components/SidebarProjects.test.tsx — mock project color fixture
-   * allow ui/src/components/SidebarStarredProjects.test.tsx — mock project color fixture
-   * allow ui/src/pages/CompanyEnvironments.test.tsx — xterm.js theme-mock assertion values (mirrors the allowlisted xterm.js config in the CompanyEnvironments.tsx source above)
-   * allow ui/src/pages/ExecutionWorkspaceDetail.test.tsx — mock project color fixture
-   * allow ui/src/pages/InviteLanding.test.tsx — "#NNNN" pull-request references inside explanatory comments, not color literals
-   * allow ui/src/pages/IssueDetail.test.tsx — mock project color fixture
-   * allow ui/src/pages/ProjectDetail.test.tsx — mock project color fixture
-   * allow ui/src/pages/ProjectWorkspaceDetail.test.tsx — mock project color fixture
-   * allow ui/src/pages/Projects.test.tsx — mock project color fixture
-   * allow ui/src/pages/Routines.test.tsx — mock routine/label color fixtures
+   Test-only source is excluded by the gate's production-source walker, so
+   realistic mock/API data values do not need file-wide exemptions here.
    ── end allowlist ── */
 
 /* Agent settings composition, shared with Storybook. */
@@ -3053,6 +3026,7 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   --office-editor-handle-inset: calc(var(--spacing) * 0.5);
   --office-editor-seat-background: color-mix(in oklab, var(--card) 88%, transparent);
   --office-editor-seat-border: color-mix(in oklab, var(--ring) 72%, var(--border));
+  --office-editor-character-background: color-mix(in oklab, var(--card) 72%, transparent);
   --office-content-gap: calc(var(--spacing) * 5);
   --office-inspector-width: 23rem;
   --office-inspector-top: calc(var(--spacing) * 3);
@@ -3088,6 +3062,21 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   width: calc(var(--office-seat-width) * 100%);
   height: calc(var(--office-seat-height) * 100%);
   z-index: var(--office-seat-z);
+}
+
+.office-character,
+.office-editor-character {
+  position: absolute;
+  left: calc(var(--office-character-x) * 100%);
+  top: calc(var(--office-character-y) * 100%);
+  width: calc(var(--office-character-width) * 100%);
+  height: calc(var(--office-character-height) * 100%);
+  z-index: var(--office-character-z);
+}
+
+.office-character {
+  pointer-events: none;
+  object-fit: contain;
 }
 
 .office-agent-card {
@@ -3222,7 +3211,26 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   cursor: move;
 }
 
+.office-editor-character {
+  overflow: hidden;
+  border: var(--office-seat-border-width) solid var(--office-editor-seat-border);
+  border-radius: var(--radius-md);
+  background: var(--office-editor-character-background);
+  cursor: move;
+}
+
+.office-editor-character > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
 .office-editor-stage[data-preview] .office-editor-seat {
+  cursor: default;
+}
+
+.office-editor-stage[data-preview] .office-editor-character {
   cursor: default;
 }
 

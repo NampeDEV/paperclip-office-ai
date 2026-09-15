@@ -424,7 +424,9 @@ async function collectTeamFiles(
   files.sort((a, b) => {
     if (a.path === TEAM_ENTRYPOINT) return -1;
     if (b.path === TEAM_ENTRYPOINT) return 1;
-    return a.path.localeCompare(b.path);
+    // This order becomes part of contentHash. Do not use localeCompare here:
+    // host locale collation can place .paperclip.yaml after agents/ on Windows.
+    return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
   });
 
   if (!files.some((file) => file.path === TEAM_ENTRYPOINT && file.kind === "team")) {

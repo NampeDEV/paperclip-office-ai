@@ -11,6 +11,7 @@ import {
   companies,
   createDb,
   officeScenes,
+  projects,
 } from "@paperclipai/db";
 import {
   BUNDLED_OFFICE_SCENE_IMAGE_HEIGHT,
@@ -32,6 +33,7 @@ type Db = ReturnType<typeof createDb>;
 
 function sceneInput(overrides: Record<string, unknown> = {}) {
   return {
+    projectId: null,
     revision: 0,
     name: "Office",
     backgroundAssetId: null,
@@ -47,6 +49,7 @@ function sceneInput(overrides: Record<string, unknown> = {}) {
       height: 0.2,
       zIndex: 1,
     }],
+    characters: [],
     ...overrides,
   };
 }
@@ -164,6 +167,7 @@ describeEmbeddedPostgres("office scene routes and storage", () => {
     await db.delete(officeScenes);
     await db.delete(assets);
     await db.delete(agents);
+    await db.delete(projects);
     await db.delete(companies);
   });
 
@@ -175,6 +179,14 @@ describeEmbeddedPostgres("office scene routes and storage", () => {
     return db
       .insert(companies)
       .values({ name, issuePrefix: `OF${randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase()}` })
+      .returning()
+      .then((rows) => rows[0]!);
+  }
+
+  async function project(companyId: string, name: string) {
+    return db
+      .insert(projects)
+      .values({ companyId, name })
       .returning()
       .then((rows) => rows[0]!);
   }
@@ -256,6 +268,35 @@ describeEmbeddedPostgres("office scene routes and storage", () => {
     expect(rejectedUpdates[0]!.reason).toMatchObject({ status: 409 });
   });
 
+  it("uses a company fallback until an owned project creates its own compare-and-swap scene", async () => {
+    const primary = await company("Office Project Scope");
+    const foreign = await company("Office Foreign Scope");
+    const alpha = await project(primary.id, "Alpha");
+    const beta = await project(primary.id, "Beta");
+    const foreignProject = await project(foreign.id, "Foreign");
+    const scenes = officeSceneService(db, storageFixture());
+
+    const fallback = await scenes.save(primary.id, sceneInput({ name: "Company fallback" }));
+    expect((await scenes.get(primary.id, alpha.id))?.id).toBe(fallback.scene.id);
+    expect((await scenes.get(primary.id, beta.id))?.projectId).toBeNull();
+
+    const alphaScene = await scenes.save(primary.id, sceneInput({
+      projectId: alpha.id,
+      name: "Alpha override",
+    }));
+    expect(alphaScene.scene.projectId).toBe(alpha.id);
+    expect((await scenes.get(primary.id, alpha.id))?.id).toBe(alphaScene.scene.id);
+    expect((await scenes.get(primary.id, beta.id))?.id).toBe(fallback.scene.id);
+    await expect(scenes.save(primary.id, sceneInput({ projectId: foreignProject.id }))).rejects.toMatchObject({ status: 422 });
+
+    const concurrentUpdates = await Promise.allSettled([
+      scenes.save(primary.id, sceneInput({ projectId: alpha.id, revision: alphaScene.scene.revision, name: "Alpha one" })),
+      scenes.save(primary.id, sceneInput({ projectId: alpha.id, revision: alphaScene.scene.revision, name: "Alpha two" })),
+    ]);
+    expect(concurrentUpdates.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(concurrentUpdates.filter((result) => result.status === "rejected")).toHaveLength(1);
+  });
+
   it("derives saved background dimensions and rejects truncated stored rasters", async () => {
     const primary = await company("Office Stored Background");
     const storage = storageFixture();
@@ -286,12 +327,23 @@ describeEmbeddedPostgres("office scene routes and storage", () => {
       imageHeight: 3,
     }))).rejects.toMatchObject({ status: 422 });
 
+    const characterId = randomUUID();
     const saved = await scenes.save(primary.id, sceneInput({
       backgroundAssetId: background!.id,
       imageWidth: 3,
       imageHeight: 2,
+      characters: [{
+        id: characterId,
+        assetId: background!.id,
+        x: 0.4,
+        y: 0.4,
+        width: 0.2,
+        height: 0.2,
+        zIndex: 2,
+      }],
     }));
     expect(saved.scene.backgroundAssetId).toBe(background!.id);
+    expect(saved.scene.characters).toEqual([expect.objectContaining({ id: characterId, assetId: background!.id })]);
 
     const truncatedKey = `office/${randomUUID()}`;
     const truncated = png.subarray(0, 62);
@@ -345,21 +397,42 @@ describeEmbeddedPostgres("office scene routes and storage", () => {
       .attach("file", png, { filename: "office.png", contentType: "image/png" });
     expect(agentUpload.status).toBe(403);
 
+    const character = await request(primaryApp.app)
+      .post(`/api/companies/${primary.id}/office-scene/character`)
+      .attach("file", png, { filename: "character.png", contentType: "image/png" });
+    expect(character.status, JSON.stringify(character.body)).toBe(201);
+    expect((primaryApp.storage as { putFile: ReturnType<typeof vi.fn> }).putFile).toHaveBeenLastCalledWith(expect.objectContaining({
+      companyId: primary.id,
+      contentType: "image/png",
+      namespace: "assets/office-characters",
+    }));
+
     const saved = await request(primaryApp.app)
       .put(`/api/companies/${primary.id}/office-scene`)
       .send(sceneInput({
         backgroundAssetId: uploaded.body.assetId,
         imageWidth: uploaded.body.imageWidth,
         imageHeight: uploaded.body.imageHeight,
+        characters: [{
+          id: randomUUID(),
+          assetId: character.body.assetId,
+          x: 0.4,
+          y: 0.4,
+          width: 0.2,
+          height: 0.2,
+          zIndex: 2,
+        }],
       }));
     expect(saved.status, JSON.stringify(saved.body)).toBe(201);
     const read = await request(primaryApp.app).get(`/api/companies/${primary.id}/office-scene`);
     expect(read.status).toBe(200);
     expect(read.body).toMatchObject({ id: saved.body.id, revision: 1, backgroundAssetId: uploaded.body.assetId });
+    expect(read.body.characters).toHaveLength(1);
 
     const activities = await db.select({ action: activityLog.action }).from(activityLog);
     expect(activities.map((activity) => activity.action)).toEqual(expect.arrayContaining([
       "office_scene.background_uploaded",
+      "office_scene.character_uploaded",
       "office_scene.created",
     ]));
     const rejected = await request(primaryApp.app)

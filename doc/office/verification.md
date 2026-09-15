@@ -71,3 +71,13 @@ Final browser acceptance **passed** at 10:32:18 UTC, followed by native-flow che
 Receipts and delivery screenshots are in `evidence/`. Raw local logs remain under `.paperclip-local/`. The acceptance script restores the full layout if its temporary unseated scenario fails. The final layout has six seats and three bindings; no provider run is left active.
 
 Scope remains M0/M1. The separate M2 plan is `../plans/2026-09-13-ai-office-next.md`; it is a roadmap, not evidence of external connector completion. Full repository test/build/typecheck gates are **not all green** for the platform reasons above. The Office-specific checks and live acceptance passed.
+
+## M2 continuation — 13 September 2026
+
+The preceding section records the earlier M0/M1 checkpoint. M2 now has live acceptance evidence in `evidence/m2-browser-evidence.json`: project fallback, independent character upload, separate project revision/CAS, unchanged company scene, foreign-project rejection, and workload reconciliation all passed. The repeated desktop/mobile checks report no page errors or horizontal overflow. The temporary character test layer was removed; the project override and original company layout remain separate.
+
+Focused checks passed: 10 UI tests, 7 Office backend tests, the migration replay/preservation test, UI typecheck/build and token gates. Native migrations 0279 and 0280 were applied after a 506001-byte native database backup; no previous scene or report was discarded. Team installation and report evidence are in `team-preset.md` and `reports.md`.
+
+Higgsfield login returned an issuer mismatch and remains unconnected. Full platform gate receipts are tracked in `windows-tests.md`; targeted passing checks do not imply a fully green repository.
+
+Cross-component read-only review found no actionable regressions in scene scope/character handling or team receipt idempotency. Review covered ownership checks, exact-scope CAS, stale draft retention, bounded raster assets, fingerprint inputs, atomic claims, and failed/ambiguous retry behavior. This local review does not substitute for GitHub CI or an unavailable external review service.

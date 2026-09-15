@@ -52,7 +52,7 @@ try {
   assert.deepEqual(await getScene(), saved);
   evidence.checks.push("Uploaded raster, assigned three agents, edited normalized x, previewed, saved and reloaded exact scene");
 
-  const payload = { revision: saved.revision, name: saved.name, backgroundAssetId: saved.backgroundAssetId,
+  const payload = { projectId: null, characters: saved.characters, revision: saved.revision, name: saved.name, backgroundAssetId: saved.backgroundAssetId,
     imageWidth: saved.imageWidth, imageHeight: saved.imageHeight, seats: saved.seats };
   const race = await Promise.all([1, 2].map(() => context.request.put(`${base}${apiPath}`, { data: payload })));
   assert.deepEqual(race.map((response) => response.status()).sort(), [200, 409]);
@@ -81,6 +81,32 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByLabel("Project scope", { exact: true }).selectOption(emptyProject.id);
   await page.getByText("No active tasks in this scope.").waitFor();
+  const companyBeforeProjectEdit = await getScene();
+  const projectSceneUrl = `${base}${apiPath}?projectId=${emptyProject.id}`;
+  const projectBefore = await (await context.request.get(projectSceneUrl)).json();
+  const projectRevision = projectBefore?.projectId === emptyProject.id ? projectBefore.revision : 0;
+  if (projectRevision === 0) await page.getByText("Using the company layout. Editing creates a project layout.").waitFor();
+  await page.getByRole("button", { name: "Edit layout", exact: true }).click();
+  await editor.getByLabel("Character art", { exact: true }).setInputFiles(path.join(root, "ui/public/office/office-night.webp"));
+  await editor.getByText("Character layers", { exact: true }).waitFor();
+  await editor.getByRole("button", { name: "Save layout", exact: true }).click();
+  await editor.waitFor({ state: "hidden" });
+  const projectSaved = await (await context.request.get(projectSceneUrl)).json();
+  assert.equal(projectSaved.projectId, emptyProject.id);
+  assert.equal(projectSaved.revision, projectRevision + 1);
+  assert.equal(projectSaved.characters.length, (projectRevision ? projectBefore.characters.length : companyBeforeProjectEdit.characters.length) + 1);
+  assert.deepEqual(await getScene(), companyBeforeProjectEdit);
+  const projectPayload = { ...payload, projectId: emptyProject.id, revision: projectSaved.revision,
+    seats: projectSaved.seats, characters: projectSaved.characters };
+  const projectRace = await Promise.all([1, 2].map(() => context.request.put(`${base}${apiPath}`, { data: projectPayload })));
+  assert.deepEqual(projectRace.map(response => response.status()).sort(), [200, 409]);
+  const cleanProject = await context.request.put(`${base}${apiPath}`, { data: {
+    ...projectPayload, revision: projectSaved.revision + 1, characters: projectBefore.characters,
+  } });
+  assert.equal(cleanProject.status(), 200);
+  assert.deepEqual(await getScene(), companyBeforeProjectEdit);
+  assert.deepEqual(await (await context.request.get(`${base}/api/companies/${company.id}/live-runs`)).json(), []);
+  evidence.checks.push("Project fallback, independent character upload, project CAS and unchanged company layout; scene edits created no live runs");
   await page.locator(".office-seat").getByTestId(`office-agent-${agents[1].id}`).click();
   await page.getByRole("tab", { name: "Discussion", exact: true }).click();
   assert.equal(await page.getByRole("tabpanel").getByText("Verify AI Office with one real Codex task", { exact: true }).count(), 0);
@@ -127,12 +153,26 @@ try {
   }
   const foreignSave = await context.request.put(`${base}/api/companies/${otherCompany.id}/office-scene`, { data: { ...payload, revision: 0 } });
   assert.equal(foreignSave.status(), 422);
+  const foreignProjectRead = await context.request.get(`${base}/api/companies/${otherCompany.id}/office-scene?projectId=${emptyProject.id}`);
+  assert.equal(foreignProjectRead.status(), 422);
   await page.goto(`${base}/${otherCompany.issuePrefix}/office`, { waitUntil: "domcontentloaded" });
   await page.getByRole("heading", { name: "AI Office", exact: true }).waitFor();
   assert.equal(await page.locator('[data-testid^="office-agent-"]').count(), 0);
   await page.goto(`${base}/${company.issuePrefix}/office`, { waitUntil: "domcontentloaded" });
   await page.locator(".office-seat [data-testid]").first().waitFor();
   evidence.checks.push("Second company rejects first-company references and displays no first-company agents after navigation");
+
+  const workload = page.getByRole("region", { name: "Office workload" });
+  await workload.waitFor();
+  const nativeTasks = await (await context.request.get(`${base}/api/companies/${company.id}/issues`)).json();
+  for (const agent of agents) {
+    const assigned = nativeTasks.filter(task => task.companyId === company.id && task.assigneeAgentId === agent.id && !["done", "cancelled"].includes(task.status));
+    const row = workload.getByRole("row").filter({ has: page.getByRole("rowheader", { name: agent.name, exact: true }) });
+    assert.deepEqual(await row.getByRole("cell").allTextContents(), [assigned.length,
+      assigned.filter(task => task.status === "blocked").length,
+      assigned.filter(task => task.status === "in_review").length, 0, 0].map(String));
+  }
+  evidence.checks.push("Workload rows reconcile against native company task assignments and zero live runs");
 
   for (const viewport of [{ width: 1920, height: 1080 }, { width: 1280, height: 720 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);

@@ -43,5 +43,18 @@ be truncated when the current workspace path still names a different file.
 
 | Check | State |
 | --- | --- |
-| `pnpm -r typecheck` and `pnpm build` | Deferred until concurrent Office contract edits settle, so their receipts cover one coherent tree. |
-| `pnpm test:run` | The prior full invocation was interrupted after reporting broader upstream failures; it is not a green receipt. Re-run after focused platform fixes and complete launch validation. |
+| `pnpm -r typecheck` | Passed on 14 September 2026, exit 0, 03:25:30–03:28:52 UTC. Rust release compilation completed in the prior run; the interrupted parent command was not counted as a pass. |
+| `pnpm build` | Passed on 14 September 2026, exit 0, 03:36:34–03:39:11 UTC. All 1,138 copied server/vendor/adapter files were compared byte-for-byte with their sources; the CLI bundle exists. |
+| `pnpm test:run` | Incomplete: the process is no longer present and no final receipt was written. The last log records failures in Slack ordering, workspace runtime, adapter, and spool tests. This is not a passing gate. |
+
+The remaining Windows build fixes replace Unix-only copy/remove/chmod commands with Node filesystem operations. Generated runner checks accept CRLF without changing content checks, and workflow traceability imports use a file URL. Skill catalog text uses LF and inventory sorting uses an explicit English locale; all existing catalog hashes remain unchanged. Six catalog-builder tests pass after this change.
+
+## CI follow-up — 14 September 2026
+
+CI on `ca4393a6895c01d978361e08a908a212d19eb6f7` passed build, typecheck, runner verification, all five general-server shards, and workspace shards. Serialized shards 1 and 4 and E2E shard 3 failed. Office was missing from the OpenAPI route inventory and document; all four routes now have coverage, path/query/body contracts, upload fields, and board-only mutation metadata. The final OpenAPI suite passes all eight tests, and the server typecheck passes.
+
+The routine revision restore failure did not reproduce locally: all 15 routine route tests passed without changing production code. The CI signoff test could not observe an issue-bound heartbeat run. These CI results remain unresolved until a new run confirms them. No permission or execution ownership check was relaxed.
+
+CI run 34805107285 on `9f01542155d0e37247877d0801238160529ef4fa` passed all three E2E shards and all five serialized server shards, including Office OpenAPI and routine restore. Build, typecheck, runner verification, and all workspace shards also passed. The only failing test lane was general server shard 3: two assertions still expected Unix copy commands (3,862 tests passed in that lane). The build test now executes the actual Node copy command against isolated nested fixtures, including hidden files, and checks all four output directories. All six focused build-script tests pass. A new CI run must verify this final test change.
+
+CI run 34852739827 passed the repaired general-server shard 3. It exposed a Daytona fixture race: a zero-delay timer did not guarantee that `releaseUpload` had been assigned. The fixture now uses its existing transfer gates to wait for both actual arrivals before teardown. The focused regression passes. The standalone Vitest include glob now uses forward slashes so Windows discovers the tests. The full standalone Windows run reports 214 passed, 8 failed, and 14 skipped; failures include unsupported symlink permissions and remain outside this focused fix. The generic MCP issuer test cannot start its embedded database within the suite's fixed 20-second setup limit on this host. No passing issuer regression is claimed. CI also reported a missing setup comment link in the Discord host-pause recovery test; that remains open pending diagnosis.

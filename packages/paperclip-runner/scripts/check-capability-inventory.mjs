@@ -47,8 +47,12 @@ const expected = {
   [resolve(packageRoot, "src/generated/capability-contract.ts")]: renderContractModule(inventories),
   [resolve(packageRoot, "docs/capability-contract.md")]: renderDocumentation(inventories),
 };
+const normalizeLineEndings = (source) => source.replace(/\r\n/g, "\n");
 for (const [path, source] of Object.entries(expected)) {
-  if (await readFile(path, "utf8").catch(() => "") !== source) errors.push(`Generated output is stale: ${path}.`);
+  // Git may check generated artifacts out with CRLF on Windows. Compare their
+  // content after newline normalization while preserving every other byte.
+  const actual = normalizeLineEndings(await readFile(path, "utf8").catch(() => ""));
+  if (actual !== normalizeLineEndings(source)) errors.push(`Generated output is stale: ${path}.`);
 }
 if (errors.length > 0) {
   process.stderr.write(`Capability inventory check failed:\n${errors.map((error) => `- ${error}`).join("\n")}\n`);

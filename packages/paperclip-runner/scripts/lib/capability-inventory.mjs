@@ -82,7 +82,10 @@ export function encodeInventory(value) {
 }
 
 export function decodeInventory(source) {
-  const json = source.startsWith(sourceHeader) ? source.slice(sourceHeader.length) : source;
+  // Git may check the generated inventory out with CRLF on Windows. Keep the
+  // sentinel strict while accepting that platform newline representation.
+  const header = /^# GENERATED FILE — DO NOT EDIT\. Run pnpm generate:capability-inventory\.\r?\n/u.exec(source)?.[0];
+  const json = header ? source.slice(header.length) : source;
   return JSON.parse(json);
 }
 
