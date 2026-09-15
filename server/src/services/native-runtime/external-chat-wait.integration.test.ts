@@ -23,6 +23,7 @@ import {
   completionContracts,
   closeRegisteredClients,
   createDb,
+  EMBEDDED_POSTGRES_TEST_TIMEOUT_MS,
   heartbeatRuns,
   issueComments,
   issueAttachments,
@@ -87,7 +88,7 @@ describe("native external-chat response wait", () => {
       "native-external-chat-wait-",
     );
     db = createDb(temporary.connectionString);
-  }, 30_000);
+  }, EMBEDDED_POSTGRES_TEST_TIMEOUT_MS);
 
   afterAll(async () => {
     await temporary?.cleanup();

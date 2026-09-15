@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AdapterExecutionContext } from "@paperclipai/adapter-utils";
@@ -15,7 +16,7 @@ const MANAGED_MCP_BLOCK_END = "# END PAPERCLIP MANAGED MCP";
  * The allowlist of managed `CODEX_HOME` entries that the codex-local adapter
  * stages into the sandbox `home` asset (see {@link stageCodexHomeForSync}).
  * Derived from the seeding constants so it can never drift from what the adapter
- * actually writes into the home: the copied static config files, the symlinked
+ * actually writes into the home: the copied static config files, the linked
  * credential file, and the injected `skills/` directory. Everything else the
  * stock upstream `codex` binary writes at runtime (`*.sqlite`, `*-wal`,
  * `plugins/`, `cache/`, `sessions/`, `shell_snapshots/`, …) is intentionally
@@ -213,6 +214,14 @@ async function createExpectedSymlink(target: string, source: string): Promise<vo
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "EEXIST" && await isExpectedSymlink(target, source)) return;
+    // Windows commonly denies symbolic-link creation without Developer Mode or
+    // elevated privileges. Copy the current credential instead, but create it
+    // exclusively so a raced-in managed auth file is never overwritten.
+    if (code === "EPERM") {
+      await fs.copyFile(source, target, fsConstants.COPYFILE_EXCL);
+      await fs.chmod(target, 0o600);
+      return;
+    }
     throw error;
   }
 }
@@ -229,8 +238,8 @@ export async function ensureSymlink(target: string, source: string): Promise<voi
     // A previous Paperclip version copied this file into the managed home
     // instead of symlinking it. Codex refresh tokens rotate and are
     // single-use, so a stale copy fails with refresh_token_reused on the next
-    // run (#5028). Replace the regular file with a symlink so the CLI follows
-    // the live source. Safe to delete: target is always under the
+    // run (#5028). Replace the regular file with the live source link (or its
+    // restricted copy fallback). Safe to delete: target is always under the
     // Paperclip-managed company home, never the user's real ~/.codex.
     // Directories are left alone — `fs.unlink` would throw EISDIR on Unix
     // (and behave inconsistently on Windows). A directory at this path is not
@@ -316,7 +325,7 @@ function buildManagedMcpBlock(input: {
       "",
       `[mcp_servers.${tomlString(managedName)}]`,
       `url = ${tomlString(url)}`,
-      `headers = { Authorization = ${tomlString(`Bearer ${gateway.bearerToken}`)} }`,
+      `http_headers = { Authorization = ${tomlString(`Bearer ${gateway.bearerToken}`)} }`,
     );
   });
   lines.push(MANAGED_MCP_BLOCK_END);
@@ -592,12 +601,12 @@ export async function stageCodexHomeForSync(
 }
 
 /**
- * Seeds auth/config into an explicit Paperclip-managed `targetHome`. Symlinks
- * `auth.json` from the shared source home (so ChatGPT-subscription credentials
- * stay live and single-use refresh tokens are not copied), copies the static
- * shared config files, and — when an API key is supplied — writes an API-key
- * `auth.json` instead. A promoted device-login credential — a regular-file
- * `auth.json` holding a subscription identity the shared source does not hold,
+ * Seeds auth/config into an explicit Paperclip-managed `targetHome`. Links
+ * `auth.json` from the shared source home when permitted, or makes a restricted
+ * copy that refreshes on a later seed when the shared credential is newer;
+ * copies the static shared config files, and — when an API key is supplied —
+ * writes an API-key `auth.json` instead. A promoted device-login credential —
+ * a regular-file `auth.json` holding a subscription identity the shared source does not hold,
  * or the same identity with a `last_refresh` the shared source has not strictly
  * moved past — is kept authoritative: it is neither removed nor replaced by the
  * shared symlink. Used both for the default company home and for the per-agent

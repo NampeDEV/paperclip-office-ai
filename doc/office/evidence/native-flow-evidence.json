@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-09-13T10:35:29.489Z",
+  "checks": [
+    "Native Dashboard route rendered",
+    "Native task detail PAP-1 rendered",
+    "Office idle lifecycle, succeeded run, in_review board-owned task, native file link, no stale runtime error",
+    "Native agent detail link rendered"
+  ],
+  "errors": []
+}

@@ -1,0 +1,22 @@
+{
+  "startedAt": "2026-09-13T10:26:26.042Z",
+  "transitions": [
+    {
+      "status": "running",
+      "lagMs": 190
+    },
+    {
+      "status": "succeeded",
+      "lagMs": 51
+    }
+  ],
+  "runId": "60916603-c5d6-4393-81c7-9715c98c5d18",
+  "finalStatus": "succeeded",
+  "error": null,
+  "taskStatus": "in_review",
+  "content": "Paperclip AI Office: 2 + 2 = 4.",
+  "sha256": "62476f001a667973974cca636fa013aa6bb9593275d22e3bd7306fff65f094d9",
+  "attachmentId": "928ad4bb-ddc6-4a0e-a0b6-5b0e42b89547",
+  "cardText": "Executor\nrunning\nImplementation · codex_local\nRun Succeeded\nIn review\nRun task: PAP-1\nRun project: Office MVP Verification\nUpdated just now",
+  "filesText": "Attachments\n\noffice-smoke.txt\n\nWork products\n\nOffice smoke acceptance file\nready for review\n\nDocuments\n\nNo documents on this task."
+}

@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import {
@@ -80,6 +81,21 @@ interface LiveEventSubscription {
 
 const LiveEventSubscriptionContext =
   createContext<LiveEventSubscription | null>(null);
+
+export interface LiveConnection {
+  status: "connecting" | "connected" | "disconnected";
+  lastEventAt: string | null;
+}
+
+const LiveConnectionContext = createContext<LiveConnection>({
+  status: "disconnected",
+  lastEventAt: null,
+});
+
+/** Transport health, independent of how often any agent wakes up. */
+export function useLiveConnection(): LiveConnection {
+  return useContext(LiveConnectionContext);
+}
 
 function dispatchLiveEventToSubscribers(
   subscribers: Set<CompanyLiveEventHandler>,
@@ -1839,6 +1855,14 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
   const socketAuthKey = session?.session?.id ?? currentUserId ?? "signed_out";
   const liveCompanyId = resolveLiveCompanyId(selectedCompanyId, selectedCompany?.id ?? null);
   const canConnectSocket = canUseLiveSession(sessionStatus, session != null, health?.deploymentMode) && liveCompanyId !== null;
+  const [connection, setConnection] = useState<LiveConnection & { companyId: string | null }>({
+    companyId: null, status: "connecting", lastEventAt: null,
+  });
+  const connectionValue = useMemo<LiveConnection>(() => ({
+    status: !visible || !canConnectSocket ? "disconnected"
+      : connection.companyId !== liveCompanyId ? "connecting" : connection.status,
+    lastEventAt: connection.companyId === liveCompanyId ? connection.lastEventAt : null,
+  }), [visible, canConnectSocket, connection, liveCompanyId]);
   const currentActorRef = useRef<{ userId: string | null; agentId: string | null }>({
     userId: currentUserId,
     agentId: null,
@@ -1886,6 +1910,11 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!canConnectSocket || !liveCompanyId) return;
+    setConnection((previous) => ({
+      companyId: liveCompanyId,
+      status: "connecting",
+      lastEventAt: previous.companyId === liveCompanyId ? previous.lastEventAt : null,
+    }));
     if (wasHidden.current) {
       wasHidden.current = false;
       // Reconcile events missed while hidden, including completed runs/issues.
@@ -1932,12 +1961,10 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
         }
         if (reconnectAttempt > 0) {
           gateRef.current.suppressUntil = Date.now() + RECONNECT_SUPPRESS_MS;
-          // Reconcile after a gap: events missed while disconnected can't be
-          // replayed yet, so refetch the event-sourced live-runs list once.
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.liveRuns(liveCompanyId),
-          });
+          // A gap can contain task, agent and scene changes as well as runs.
+          void queryClient.invalidateQueries({ type: "active" }, { cancelRefetch: false });
         }
+        setConnection((previous) => ({ ...previous, companyId: liveCompanyId, status: "connected" }));
         reconnectAttempt = 0;
       };
 
@@ -1948,6 +1975,13 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
 
         try {
           const parsed = JSON.parse(raw) as LiveEvent;
+          if (parsed.companyId !== liveCompanyId) return;
+          const eventTime = Date.parse(parsed.createdAt);
+          if (Number.isFinite(eventTime)) {
+            setConnection((previous) => eventTime > Date.parse(previous.lastEventAt ?? "") || previous.lastEventAt === null
+              ? { ...previous, lastEventAt: new Date(eventTime).toISOString() }
+              : previous);
+          }
           handleLiveEvent(
             coalescingClient,
             liveCompanyId,
@@ -1981,6 +2015,7 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
         if (socket !== nextSocket) return;
         socket = null;
         if (closed) return;
+        setConnection((previous) => ({ ...previous, status: "disconnected" }));
         scheduleReconnect();
       };
     };
@@ -2011,7 +2046,9 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
 
   return (
     <LiveEventSubscriptionContext.Provider value={subscriptionValue}>
-      {children}
+      <LiveConnectionContext.Provider value={connectionValue}>
+        {children}
+      </LiveConnectionContext.Provider>
     </LiveEventSubscriptionContext.Provider>
   );
 }

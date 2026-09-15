@@ -424,6 +424,110 @@ describe("seedManagedCodexHome", () => {
       ...(lastRefresh ? { last_refresh: lastRefresh } : {}),
     });
 
+  it("falls back to a private regular-file credential when auth symlinks are denied and refreshes it on repeat seed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-seed-windows-"));
+    const sharedCodexHome = path.join(root, "shared-codex-home");
+    const paperclipHome = path.join(root, "paperclip-home");
+    const companyHome = path.join(
+      paperclipHome,
+      "instances",
+      "default",
+      "companies",
+      "company-1",
+      "codex-home",
+    );
+    const sharedAuth = path.join(sharedCodexHome, "auth.json");
+    const managedAuth = path.join(companyHome, "auth.json");
+    const first = subscriptionAuth("acct-windows", "first", "2026-07-09T01:00:00Z");
+    const refreshed = subscriptionAuth("acct-windows", "refreshed", "2026-07-09T02:00:00Z");
+
+    await fs.mkdir(sharedCodexHome, { recursive: true });
+    await fs.writeFile(sharedAuth, first, "utf8");
+    const symlinkError = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    vi.spyOn(fs, "symlink").mockRejectedValue(symlinkError);
+
+    try {
+      await prepareManagedCodexHome(
+        {
+          CODEX_HOME: sharedCodexHome,
+          PAPERCLIP_HOME: paperclipHome,
+          PAPERCLIP_INSTANCE_ID: "default",
+        },
+        async () => {},
+        "company-1",
+      );
+
+      expect((await fs.lstat(managedAuth)).isSymbolicLink()).toBe(false);
+      expect(await fs.readFile(managedAuth, "utf8")).toBe(first);
+      expect(await codexHomeHasUsableAuth(companyHome)).toBe(true);
+      if (process.platform !== "win32") {
+        expect((await fs.stat(managedAuth)).mode & 0o777).toBe(0o600);
+      }
+
+      // This models the shared host credential advancing after sandbox copy-back.
+      await fs.writeFile(sharedAuth, refreshed, "utf8");
+      await prepareManagedCodexHome(
+        {
+          CODEX_HOME: sharedCodexHome,
+          PAPERCLIP_HOME: paperclipHome,
+          PAPERCLIP_INSTANCE_ID: "default",
+        },
+        async () => {},
+        "company-1",
+      );
+
+      expect((await fs.lstat(managedAuth)).isSymbolicLink()).toBe(false);
+      expect(await fs.readFile(managedAuth, "utf8")).toBe(refreshed);
+      expect(await codexHomeHasUsableAuth(companyHome)).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not overwrite an auth file raced in after symlink permission denial", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-seed-windows-race-"));
+    const sharedCodexHome = path.join(root, "shared-codex-home");
+    const paperclipHome = path.join(root, "paperclip-home");
+    const companyHome = path.join(
+      paperclipHome,
+      "instances",
+      "default",
+      "companies",
+      "company-1",
+      "codex-home",
+    );
+    const sharedAuth = path.join(sharedCodexHome, "auth.json");
+    const managedAuth = path.join(companyHome, "auth.json");
+    const racedAuth = subscriptionAuth("acct-raced", "raced");
+
+    await fs.mkdir(sharedCodexHome, { recursive: true });
+    await fs.writeFile(sharedAuth, subscriptionAuth("acct-source", "source"), "utf8");
+    vi.spyOn(fs, "symlink").mockImplementationOnce(async () => {
+      await fs.writeFile(managedAuth, racedAuth, "utf8");
+      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    });
+
+    try {
+      await expect(
+        prepareManagedCodexHome(
+          {
+            CODEX_HOME: sharedCodexHome,
+            PAPERCLIP_HOME: paperclipHome,
+            PAPERCLIP_INSTANCE_ID: "default",
+          },
+          async () => {},
+          "company-1",
+        ),
+      ).rejects.toMatchObject({ code: "EEXIST" });
+
+      expect(await fs.readFile(managedAuth, "utf8")).toBe(racedAuth);
+    } finally {
+      vi.restoreAllMocks();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a promoted subscription auth.json when the shared source has no auth", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-seed-promoted-"));
     try {
@@ -1023,7 +1127,7 @@ describe("evaluateCodexCredentialReadiness", () => {
       const alpha = await fs.readFile(path.join(alphaHome, "config.toml"), "utf8");
       const zero = await fs.readFile(path.join(zeroHome, "config.toml"), "utf8");
       expect(alpha).toContain('[mcp_servers."alpha"]');
-      expect(alpha).toContain('Authorization = "Bearer alpha-token"');
+      expect(alpha).toContain('http_headers = { Authorization = "Bearer alpha-token" }');
       expect(zero).not.toContain("mcp_servers.");
       expect(zero).not.toContain("stale-token");
       expect(alphaHome).not.toBe(zeroHome);
@@ -1154,7 +1258,7 @@ describe("stageCodexHomeForSync", () => {
       // and is persisted 0600 on disk.
       await fs.writeFile(
         path.join(home, "config.toml"),
-        "[mcp_servers.paperclip]\nheaders = { Authorization = \"Bearer secret-token\" }\n",
+        "[mcp_servers.paperclip]\nhttp_headers = { Authorization = \"Bearer secret-token\" }\n",
         { mode: 0o600 },
       );
       staged = await stageCodexHomeForSync(home, { runId: "run-toml-mode" });

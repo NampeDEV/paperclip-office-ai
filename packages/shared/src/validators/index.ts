@@ -724,6 +724,21 @@ export {
 } from "./asset.js";
 
 export {
+  BUNDLED_OFFICE_SCENE_IMAGE_WIDTH,
+  BUNDLED_OFFICE_SCENE_IMAGE_HEIGHT,
+  OFFICE_SCENE_MAX_IMAGE_DIMENSION,
+  OFFICE_SCENE_MAX_IMAGE_PIXELS,
+  OFFICE_SCENE_MAX_SEATS,
+  officeSeatSchema,
+  officeSeatsSchema,
+  saveOfficeSceneSchema,
+  officeSceneBackgroundUploadResponseSchema,
+  type OfficeSeat,
+  type SaveOfficeScene,
+  type OfficeSceneBackgroundUploadResponse,
+} from "./office.js";
+
+export {
   pipelineAutomationRetryCleanupOptionsSchema,
   pipelineAutomationRetryRequestSchema,
   pipelineAutomationRetryScopeSchema,

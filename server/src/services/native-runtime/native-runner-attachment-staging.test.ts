@@ -1,5 +1,12 @@
 import { constants } from "node:fs";
-import { mkdtemp, readFile, writeFile, stat } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -13,7 +20,9 @@ vi.mock("node:fs/promises", async (original) => {
     open: (...args: Parameters<typeof actual.open>) => {
       if (
         control.redirectedPath &&
-        String(args[0]).includes("/.paperclip-inbound/")
+        /(?:^|[\\/])\.paperclip-inbound(?:[\\/]|$)/u.test(
+          String(args[0]),
+        )
       ) {
         return actual.open(control.redirectedPath, constants.O_RDWR);
       }
@@ -68,4 +77,29 @@ describe("confined native attachment staging", () => {
       (await stat(path.join(workspaceRoot, slot.workspaceRelativePath))).size,
     ).toBe(0);
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "rejects an outside-root junction before staging bytes",
+    async () => {
+      const workspaceRoot = await mkdtemp(
+        path.join(tmpdir(), "native-stage-junction-root-"),
+      );
+      const outsideRoot = await mkdtemp(
+        path.join(tmpdir(), "native-stage-junction-outside-"),
+      );
+      await symlink(
+        outsideRoot,
+        path.join(workspaceRoot, ".paperclip-inbound"),
+        "junction",
+      );
+
+      await expect(
+        stageNativeRunnerAttachmentBytes({
+          workspaceRoot,
+          body: Buffer.from("must stay inside the workspace"),
+        }),
+      ).rejects.toThrow("paperclip_runner_attachment_staging_path_denied");
+      expect(await readdir(outsideRoot)).toEqual([]);
+    },
+  );
 });

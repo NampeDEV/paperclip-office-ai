@@ -327,6 +327,12 @@ export type {
 } from "../agent-eligibility.js";
 export type { AssetImage } from "./asset.js";
 export type {
+  OfficeSeat,
+  OfficeScene,
+  SaveOfficeScene,
+  OfficeSceneBackgroundUploadResponse,
+} from "./office.js";
+export type {
   CreateDocumentAnnotationCommentRequest,
   CreateDocumentAnnotationThreadRequest,
   DocumentAnnotationAnchorRemapSnapshot,

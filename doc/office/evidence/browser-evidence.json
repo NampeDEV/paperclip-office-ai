@@ -1,0 +1,22 @@
+{
+  "checkedAt": "2026-09-13T10:32:18.254Z",
+  "checks": [
+    "Uploaded raster, assigned three agents, edited normalized x, previewed, saved and reloaded exact scene",
+    "Concurrent writes using the same revision returned one 200 and one 409",
+    "Remote save rejects stale editor revision and preserves unsaved draft",
+    "Empty project filters tasks/discussion while agent keeps its actual task/project label",
+    "Controlled 403: two immediate clicks send one invocation and show error without success",
+    "Three real agents with two seats keep the third agent accessible in Unseated agents; restored six seats",
+    "Second company rejects first-company references and displays no first-company agents after navigation",
+    "Viewport 1920x1080: no horizontal overflow",
+    "Viewport 1280x720: no horizontal overflow",
+    "Viewport 390x844: no horizontal overflow",
+    "No browser page errors"
+  ],
+  "screenshots": [
+    "office-1920.png",
+    "office-1280.png",
+    "office-390.png"
+  ],
+  "errors": []
+}

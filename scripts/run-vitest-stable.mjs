@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -278,6 +279,12 @@ function selectSerializedSuites(routeTests, shardIndex, shardCount) {
 }
 
 function runVitest(args, label, testShard = null) {
+  // Policy CI partitions suites before installing dependencies. Resolve Vitest
+  // only for execution so --dry-run stays dependency-free.
+  const vitestEntrypoint = path.join(
+    path.dirname(createRequire(path.join(repoRoot, "package.json")).resolve("vitest/package.json")),
+    "vitest.mjs",
+  );
   console.log(`\n[test:run] ${label}`);
   invocationIndex += 1;
   const tempRootParent = process.platform === "win32" ? os.tmpdir() : "/tmp";
@@ -300,7 +307,7 @@ function runVitest(args, label, testShard = null) {
   if (testShard) {
     const collect = (filters, name) => {
       const output = path.join(testRoot, `${name}.json`);
-      const result = spawnSync("pnpm", ["exec", "vitest", "list", ...sourceOnlyVitestArgs,
+      const result = spawnSync(process.execPath, [vitestEntrypoint, "list", ...sourceOnlyVitestArgs,
         ...filters, "--allowOnly=false", "--includeTaskLocation", `--json=${output}`], {
         cwd: repoRoot, env, stdio: "inherit",
       });
@@ -316,7 +323,7 @@ function runVitest(args, label, testShard = null) {
     console.log(`[test:run] chat shard ${testShard.index + 1}/${testShard.count}: ${selected.tests.length}/${collected.length} tests, ${selected.lines.length} source lines; exact filter coverage verified`);
     args.push("--allowOnly=false");
   }
-  const result = spawnSync("pnpm", ["exec", "vitest", "run", ...sourceOnlyVitestArgs, ...args], {
+  const result = spawnSync(process.execPath, [vitestEntrypoint, "run", ...sourceOnlyVitestArgs, ...args], {
     cwd: repoRoot,
     env,
     stdio: "inherit",

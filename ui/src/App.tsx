@@ -25,6 +25,7 @@ import { CloudAccessGate } from "./components/CloudAccessGate";
 import { PaperclipLoading } from "./components/AnimatedPaperclipIcon";
 import { Dashboard } from "./pages/Dashboard";
 import { DashboardLive } from "./pages/DashboardLive";
+import { Office } from "./pages/Office";
 import { Timeline } from "./pages/Timeline";
 import { Companies } from "./pages/Companies";
 import { AGENT_FILTER_TABS, Agents } from "./pages/Agents";
@@ -149,6 +150,7 @@ function boardRoutes(streamlinedUiEnabled: boolean) {
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="dashboard/live" element={<DashboardLive />} />
+      <Route path="office" element={<Office />} />
       <Route
         path="timeline"
         element={streamlinedUiEnabled ? <AuditCompatibilityRedirect to="/activity/timeline" /> : <Timeline />}
@@ -766,6 +768,7 @@ export function App() {
           <Route path="instance/settings" element={<LegacySettingsRedirect />} />
           <Route path="instance/settings/*" element={<LegacySettingsRedirect />} />
           <Route path="companies" element={<UnprefixedBoardRedirect />} />
+          <Route path="office" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="tasks" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />

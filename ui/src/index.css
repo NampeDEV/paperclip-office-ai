@@ -3028,3 +3028,289 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
     max-height: min(var(--sz-300px), calc(100dvh - calc(var(--spacing) * 24))) !important;
   }
 }
+
+/* AI Office uses the shared semantic palette and keeps scene geometry in CSS
+   variables so saved normalized rectangles never become viewport coordinates. */
+:root {
+  --office-stage-aspect-ratio: 1672 / 941;
+  --office-stage-background: color-mix(in oklab, var(--muted) 82%, var(--background));
+  --office-card-background: color-mix(in oklab, var(--card) 92%, transparent);
+  --office-card-border: color-mix(in oklab, var(--border) 82%, var(--foreground) 18%);
+  --office-card-shadow: 0 8px 24px -12px color-mix(in oklab, var(--foreground) 44%, transparent);
+  --office-card-padding: calc(var(--spacing) * 1);
+  --office-card-gap: calc(var(--spacing) * 0.5);
+  --office-card-scene-min-height: 6.75rem;
+  --office-card-chip-inline: calc(var(--spacing) * 1);
+  --office-card-chip-block: calc(var(--spacing) * 0.25);
+  --office-card-detail-size: var(--text-xs);
+  --office-card-line-height: 1.15;
+  --office-card-detail-line-height: 1.1;
+  --office-card-dim-opacity: 0.58;
+  --office-card-hover-y: calc(var(--spacing) * -0.5);
+  --office-card-transition: var(--motion-duration-fast) var(--motion-ease-standard);
+  --office-seat-border-width: var(--sz-1px);
+  --office-editor-handle-size: calc(var(--spacing) * 3);
+  --office-editor-handle-inset: calc(var(--spacing) * 0.5);
+  --office-editor-seat-background: color-mix(in oklab, var(--card) 88%, transparent);
+  --office-editor-seat-border: color-mix(in oklab, var(--ring) 72%, var(--border));
+  --office-content-gap: calc(var(--spacing) * 5);
+  --office-inspector-width: 23rem;
+  --office-inspector-top: calc(var(--spacing) * 3);
+  --office-connection-icon-size: calc(var(--spacing) * 4);
+  --office-mobile-sheet-width: 100%;
+}
+
+.office-content-grid {
+  display: grid;
+  gap: var(--office-content-gap);
+}
+
+.office-scene-stage,
+.office-editor-stage {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  overflow: hidden;
+  border: var(--office-seat-border-width) solid var(--office-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--office-stage-background);
+}
+
+.office-loading-stage {
+  aspect-ratio: var(--office-stage-aspect-ratio);
+}
+
+.office-seat,
+.office-editor-seat {
+  position: absolute;
+  left: calc(var(--office-seat-x) * 100%);
+  top: calc(var(--office-seat-y) * 100%);
+  width: calc(var(--office-seat-width) * 100%);
+  height: calc(var(--office-seat-height) * 100%);
+  z-index: var(--office-seat-z);
+}
+
+.office-agent-card {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: var(--office-seat-border-width) solid var(--office-card-border);
+  border-radius: var(--radius-md);
+  background: var(--office-card-background);
+  color: var(--foreground);
+  padding: var(--office-card-padding);
+  box-shadow: var(--office-card-shadow);
+  transition: transform var(--office-card-transition), box-shadow var(--office-card-transition), opacity var(--office-card-transition);
+}
+
+.office-agent-card-scene {
+  height: 100%;
+  min-height: var(--office-card-scene-min-height);
+}
+
+.office-agent-card-list {
+  min-height: var(--sz-44px);
+}
+
+.office-agent-card:hover {
+  transform: translateY(var(--office-card-hover-y));
+}
+
+.office-agent-card-selected {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 var(--office-seat-border-width) var(--ring), var(--office-card-shadow);
+}
+
+.office-agent-card-dimmed {
+  opacity: var(--office-card-dim-opacity);
+}
+
+.office-agent-card-heading,
+.office-agent-card-badges {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--office-card-gap);
+}
+
+.office-agent-card-heading {
+  justify-content: space-between;
+}
+
+.office-agent-card-heading > :first-child {
+  min-width: 0;
+}
+
+.office-agent-card-meta,
+.office-agent-card-summary,
+.office-agent-card-project,
+.office-agent-card-updated {
+  display: block;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--office-card-detail-size);
+  line-height: var(--office-card-detail-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-agent-card-summary,
+.office-agent-card-project {
+  color: var(--foreground);
+}
+
+.office-agent-card-badges {
+  overflow: hidden;
+  line-height: var(--office-card-detail-line-height);
+}
+
+.office-agent-card-badges > span,
+.office-agent-card-lifecycle .status-chip {
+  padding: var(--office-card-chip-block) var(--office-card-chip-inline);
+  font-size: var(--office-card-detail-size);
+  line-height: var(--office-card-detail-line-height);
+}
+
+.office-agent-card-badges .status-chip {
+  gap: var(--office-card-gap);
+}
+
+.office-agent-card-badges .status-chip svg {
+  width: var(--text-nano);
+  height: var(--text-nano);
+}
+
+.office-empty-seat {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--office-card-gap);
+  overflow: hidden;
+  border: var(--office-seat-border-width) dashed var(--office-card-border);
+  border-radius: var(--radius-md);
+  background: var(--office-card-background);
+  color: var(--muted-foreground);
+  padding: var(--office-card-padding);
+  font-size: var(--text-micro);
+  line-height: var(--office-card-line-height);
+}
+
+.office-empty-seat-label {
+  color: var(--foreground);
+}
+
+.office-editor-stage {
+  touch-action: none;
+}
+
+.office-editor-seat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--office-card-gap);
+  overflow: hidden;
+  border: var(--office-seat-border-width) solid var(--office-editor-seat-border);
+  border-radius: var(--radius-md);
+  background: var(--office-editor-seat-background);
+  color: var(--foreground);
+  padding: var(--office-card-padding);
+  font-size: var(--text-micro);
+  line-height: var(--office-card-line-height);
+  cursor: move;
+}
+
+.office-editor-stage[data-preview] .office-editor-seat {
+  cursor: default;
+}
+
+.office-editor-seat-agent {
+  color: var(--muted-foreground);
+}
+
+.office-editor-resize {
+  position: absolute;
+  right: var(--office-editor-handle-inset);
+  bottom: var(--office-editor-handle-inset);
+  width: var(--office-editor-handle-size);
+  height: var(--office-editor-handle-size);
+  border-radius: var(--radius-sm);
+  background: var(--ring);
+  cursor: se-resize;
+}
+
+.office-connection-status {
+  display: inline-flex;
+  min-height: var(--sz-44px);
+  min-width: 0;
+  align-items: center;
+  gap: var(--office-card-gap);
+  color: var(--muted-foreground);
+  font-size: var(--text-micro);
+  line-height: var(--office-card-line-height);
+}
+
+.office-connection-status svg {
+  width: var(--office-connection-icon-size);
+  height: var(--office-connection-icon-size);
+  flex: none;
+}
+
+.office-connection-status[data-status="connected"] {
+  color: var(--status-agent-running);
+}
+
+.office-connection-status[data-status="disconnected"] {
+  color: var(--destructive);
+}
+
+.office-mobile-agent-list {
+  display: none;
+}
+
+.office-mobile-inspector-sheet {
+  width: var(--office-mobile-sheet-width);
+  max-width: none;
+}
+
+@media (min-width: 96rem) {
+  .office-content-grid[data-has-selection] {
+    grid-template-columns: minmax(0, 1fr) var(--office-inspector-width);
+    align-items: start;
+  }
+
+  .office-inspector-panel {
+    position: sticky;
+    top: var(--office-inspector-top);
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .office-scene {
+    display: none;
+  }
+
+  .office-scene[data-mobile-visible] {
+    display: block;
+  }
+
+  .office-scene[data-mobile-visible] .office-seat {
+    display: none;
+  }
+
+  .office-mobile-agent-list {
+    display: block;
+  }
+
+  .office-connection-status {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-agent-card:hover {
+    transform: none;
+  }
+}
